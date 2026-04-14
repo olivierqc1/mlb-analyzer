@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚾ MLB Strikeouts Analyzer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; min-height: 100vh; }
+        .container { max-width: 600px; margin: 0 auto; padding: 12px; }
+        .header { text-align: center; padding: 16px 0 12px; }
+        .header h1 { font-size: 1.5em; font-weight: 800; }
+        .header p { color: #64748b; font-size: 12px; margin-top: 4px; }
+
+        .controls { background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+        .edge-label { color: #94a3b8; font-size: 13px; flex: 1; }
+        .edge-input { background: #334155; border: 1px solid #475569; border-radius: 8px; padding: 10px; color: white; font-size: 14px; width: 70px; }
+        .btn-scan { background: linear-gradient(to right, #2563eb, #7c3aed); border: none; border-radius: 8px; padding: 10px 18px; color: white; font-weight: 700; cursor: pointer; font-size: 14px; white-space: nowrap; }
+        .btn-scan:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .status { text-align: center; color: #60a5fa; font-size: 12px; margin-bottom: 8px; min-height: 18px; }
+        .error-msg { background: rgba(220,38,38,0.2); border: 1px solid #dc2626; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; color: #fca5a5; }
+
+        .summary { background: #1e293b; border-radius: 10px; padding: 10px; margin-bottom: 12px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+        .sum-item { text-align: center; padding: 6px; }
+        .sum-val { font-size: 1.5em; font-weight: 700; color: #4ade80; }
+        .sum-lbl { font-size: 10px; color: #64748b; margin-top: 2px; }
+
+        .section-title { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 6px; }
+
+        .card { background: #1e293b; border-radius: 12px; padding: 14px; margin-bottom: 10px; border: 1px solid #334155; }
+        .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .pitcher-name { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .edge-chip { background: rgba(251,191,36,0.2); color: #fbbf24; border: 1px solid #fbbf24; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; }
+        .matchup-txt { color: #64748b; font-size: 11px; margin-top: 3px; }
+        .rec-badge { padding: 6px 12px; border-radius: 8px; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+        .badge-over  { background: rgba(22,163,74,0.25);  color: #4ade80; border: 1px solid #16a34a; }
+        .badge-under { background: rgba(220,38,38,0.25);  color: #f87171; border: 1px solid #dc2626; }
+
+        .stats-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 4px; background: #0f172a; border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+        .sc { text-align: center; }
+        .sc .l { color: #64748b; font-size: 9px; }
+        .sc .v { font-size: 13px; font-weight: 600; }
+        .cg { color: #4ade80; } .cb { color: #60a5fa; }
+        .cy { color: #fbbf24; } .cp { color: #a78bfa; }
+
+        .prob-wrap { margin-bottom: 8px; }
+        .prob-labels { display: flex; justify-content: space-between; font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+        .prob-bar { height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+        .prob-fill { height: 100%; border-radius: 4px; }
+        .pf-over  { background: linear-gradient(to right, #16a34a, #4ade80); }
+        .pf-under { background: linear-gradient(to right, #dc2626, #f87171); }
+
+        .k-history { display: flex; gap: 3px; align-items: flex-end; height: 48px; background: #0f172a; border-radius: 6px; padding: 4px; margin-bottom: 3px; }
+        .k-bar { flex: 1; border-radius: 2px 2px 0 0; min-width: 10px; position: relative; }
+        .kb-over  { background: linear-gradient(to top, #16a34a, #4ade80); }
+        .kb-under { background: linear-gradient(to top, #7f1d1d, #dc2626); }
+        .k-line   { position: absolute; left:0; right:0; height: 2px; background: #fbbf24; }
+        .k-legend { display: flex; justify-content: space-between; font-size: 9px; color: #64748b; margin-bottom: 6px; }
+
+        .expand-btn { width: 100%; background: none; border: none; color: #64748b; font-size: 11px; padding: 6px; cursor: pointer; }
+        .expand-btn:hover { color: #94a3b8; }
+        .detail-box { background: #0f172a; border-radius: 8px; padding: 10px; margin-top: 8px; }
+        .dr { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #1e293b; font-size: 12px; }
+        .dr:last-child { border-bottom: none; }
+        .dl { color: #64748b; } .dv { font-weight: 600; }
+
+        .starts-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 4px; margin-top: 8px; }
+        .start-cell { background: #1e293b; border-radius: 5px; padding: 5px 4px; text-align: center; font-size: 10px; }
+        .start-cell.over  { border-top: 2px solid #16a34a; }
+        .start-cell.under { border-top: 2px solid #dc2626; }
+        .sk { font-size: 15px; font-weight: 700; }
+        .sip { color: #64748b; font-size: 9px; }
+
+        .empty { text-align: center; color: #475569; padding: 60px 20px; }
+        .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+        .info-box { background: rgba(37,99,235,0.15); border: 1px solid #2563eb; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 12px; color: #93c5fd; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>⚾ MLB Strikeouts</h1>
+        <p>Lanceurs partants · Distribution normale · Pre-match uniquement</p>
+    </div>
+
+    <div class="info-box">
+        📊 <strong>Comment ça marche :</strong> MLB Stats API (gratuit) récupère l'historique K par départ. La distribution est modélisée comme une normale. Si la ligne du bookmaker dévie de la moyenne réelle → edge.
+    </div>
+
+    <div class="controls">
+        <span class="edge-label">Edge minimum (%)</span>
+        <input type="number" class="edge-input" id="minEdge" value="5" min="1" max="20">
+        <button class="btn-scan" id="btnScan" onclick="scan()">🔍 Scanner</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div id="errMsg"></div>
+    <div id="summary" style="display:none" class="summary">
+        <div class="sum-item"><div class="sum-val" id="sPitchers">-</div><div class="sum-lbl">Lanceurs</div></div>
+        <div class="sum-item"><div class="sum-val" id="sOpps">-</div><div class="sum-lbl">Opps</div></div>
+        <div class="sum-item"><div class="sum-val" id="sEdge">-</div><div class="sum-lbl">Edge moy.</div></div>
+    </div>
+    <div id="content"></div>
+</div>
+
+<script>
+// ⚠️ REMPLACE PAR TON URL RENDER APRÈS DÉPLOIEMENT
+const API = 'https://TON-APP.onrender.com';
+
+async function scan() {
+    const btn = document.getElementById('btnScan');
+    const st  = document.getElementById('status');
+    const minEdge = document.getElementById('minEdge').value;
+    btn.disabled = true;
+    document.getElementById('errMsg').innerHTML = '';
+    document.getElementById('summary').style.display = 'none';
+    document.getElementById('content').innerHTML = '';
+    st.textContent = '⏳ Réveil serveur (30-60s)...';
+    try {
+        await fetch(API + '/api/health').catch(() => {});
+        st.textContent = '📅 Récupération schedule + props...';
+        const res = await fetch(`${API}/api/daily-opportunities?min_edge=${minEdge}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status !== 'SUCCESS') throw new Error(data.message || 'Erreur');
+        const opps = data.opportunities || [];
+        st.textContent = `✅ ${opps.length} opportunité${opps.length!==1?'s':''} · ${data.analyzed} lanceurs analysés · ${data.scan_time}`;
+        if (opps.length > 0) {
+            const avgEdge = (opps.reduce((s,o)=>s+o.line_analysis.edge,0)/opps.length).toFixed(1);
+            document.getElementById('sPitchers').textContent = data.total_probable_pitchers;
+            document.getElementById('sOpps').textContent = opps.length;
+            document.getElementById('sEdge').textContent = avgEdge + '%';
+            document.getElementById('summary').style.display = 'grid';
+        }
+        renderCards(opps);
+    } catch(e) {
+        st.textContent = '';
+        document.getElementById('errMsg').innerHTML = `<div class="error-msg">❌ ${e.message}<br><small>Vérifie que le backend Render est actif · /api/health</small></div>`;
+    }
+    btn.disabled = false;
+}
+
+function renderCards(opps) {
+    const c = document.getElementById('content');
+    if (!opps.length) {
+        c.innerHTML = `<div class="empty"><div class="empty-icon">⚾</div><p>Aucune opportunité</p><p style="font-size:12px;margin-top:8px">Baisse l'edge minimum ou reviens plus tard</p></div>`;
+        return;
+    }
+    c.innerHTML = `<div class="section-title">Opportunités du jour (${opps.length})</div>` +
+        opps.map((o,i) => card(o,i)).join('');
+}
+
+function card(o, i) {
+    const la = o.line_analysis, ds = o.deep_stats;
+    const isOver = la.recommendation === 'OVER';
+    const prob = isOver ? la.over_probability : la.under_probability;
+    const games = o.recent_games || [];
+    const maxK = Math.max(...games.map(g=>g.stat), la.bookmaker_line + 2, 1);
+    const linePos = (la.bookmaker_line / maxK) * 100;
+
+    const bars = games.slice(0,10).reverse().map(g => {
+        const h = Math.max(6, (g.stat / maxK) * 100);
+        const cls = g.stat > la.bookmaker_line ? 'kb-over' : 'kb-under';
+        return `<div class="k-bar ${cls}" style="height:${h}%;position:relative">
+            <div class="k-line" style="bottom:${linePos}%"></div>
+        </div>`;
+    }).join('');
+
+    const cells = games.slice(0,10).map(g => {
+        const cls = g.stat > la.bookmaker_line ? 'over' : 'under';
+        return `<div class="start-cell ${cls}">
+            <div class="sk">${g.stat}</div>
+            <div class="sip">${g.ip}ip</div>
+            <div style="color:#64748b;font-size:8px">${g.date?g.date.slice(5):''}</div>
+        </div>`;
+    }).join('');
+
+    const gi = o.game_info || {};
+    const matchup = gi.home_team && gi.away_team ? `${gi.away_team} @ ${gi.home_team}` : '';
+    const histOver = ds.games_analyzed > 0 ? Math.round(ds.over_count/ds.games_analyzed*100) : 0;
+    const trend = ds.trend_slope > 0.1 ? '📈' : ds.trend_slope < -0.1 ? '📉' : '➡️';
+
+    return `<div class="card">
+        <div class="card-top">
+            <div>
+                <div class="pitcher-name">
+                    ${o.player}
+                    <span class="edge-chip">+${la.edge.toFixed(1)}%</span>
+                </div>
+                <div class="matchup-txt">${matchup} · K line: <strong>${la.bookmaker_line}</strong></div>
+            </div>
+            <div class="rec-badge ${isOver?'badge-over':'badge-under'}">${la.recommendation}</div>
+        </div>
+
+        <div class="stats-row">
+            <div class="sc"><div class="l">L5 moy</div><div class="v cb">${ds.avg_last_5}</div></div>
+            <div class="sc"><div class="l">Moy nette</div><div class="v">${ds.clean_mean}</div></div>
+            <div class="sc"><div class="l">σ</div><div class="v cp">${ds.std}</div></div>
+            <div class="sc"><div class="l">Cons.</div><div class="v ${ds.consistency>=60?'cg':'cy'}">${ds.consistency}%</div></div>
+            <div class="sc"><div class="l">Kelly</div><div class="v cy">${la.kelly_criterion}%</div></div>
+        </div>
+
+        <div class="prob-wrap">
+            <div class="prob-labels">
+                <span>OVER ${la.bookmaker_line} · ${la.over_probability}%</span>
+                <span>UNDER · ${la.under_probability}%</span>
+            </div>
+            <div class="prob-bar">
+                <div class="prob-fill ${isOver?'pf-over':'pf-under'}" style="width:${prob}%"></div>
+            </div>
+        </div>
+
+        ${bars ? `<div class="k-history">${bars}</div><div class="k-legend"><span>← Ancien</span><span style="color:#fbbf24">— ${la.bookmaker_line} K</span><span>Récent →</span></div>` : ''}
+
+        <button class="expand-btn" onclick="toggle(${i},this)">▼ Historique détaillé</button>
+        <div id="d${i}" style="display:none">
+            <div class="detail-box">
+                <div class="dr"><span class="dl">Source</span><span class="dv">${la.bookmaker}</span></div>
+                <div class="dr"><span class="dl">Matchs analysés</span><span class="dv">${ds.games_analyzed}</span></div>
+                <div class="dr"><span class="dl">OVER historique</span><span class="dv">${ds.over_count}/${ds.games_analyzed} (${histOver}%)</span></div>
+                <div class="dr"><span class="dl">Moy 10 derniers</span><span class="dv">${ds.avg_last_10} K</span></div>
+                <div class="dr"><span class="dl">R²</span><span class="dv">${ds.r_squared?.toFixed(3)||'N/A'}</span></div>
+                <div class="dr"><span class="dl">Tendance</span><span class="dv">${trend} ${ds.trend_slope>0?'+':''}${ds.trend_slope} K/départ</span></div>
+            </div>
+            ${cells ? `<div style="margin-top:8px;font-size:10px;color:#64748b;margin-bottom:4px">10 derniers départs (vert = OVER la ligne)</div><div class="starts-grid">${cells}</div>` : ''}
+        </div>
+    </div>`;
+}
+
+function toggle(i, btn) {
+    const d = document.getElementById('d'+i);
+    const open = d.style.display !== 'none';
+    d.style.display = open ? 'none' : 'block';
+    btn.textContent = open ? '▼ Historique détaillé' : '▲ Fermer';
+}
+</script>
+</body>
+</html>
