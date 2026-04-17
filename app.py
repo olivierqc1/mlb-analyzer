@@ -139,19 +139,10 @@ def bet_quality(a):
     elif a['rec'] == 'UNDER' and a['l5'] < a['line']: score += 1; pros.append(f"✅ L5 ({a['l5']}) confirme UNDER ({a['line']})")
     elif a['rec'] == 'OVER':  issues.append(f"⚠️ L5 ({a['l5']}) contredit le OVER")
     elif a['rec'] == 'UNDER': issues.append(f"⚠️ L5 ({a['l5']}) contredit le UNDER")
-    # Hard minimums: z >= 0.5σ ET marge absolue >= 0.7 unités
-    # Élimine les faux positifs avec marge trop faible
-    min_ok = z >= 0.5 and margin >= 0.7
-    if not min_ok:
-        grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER — Marge insuffisante'
-    elif score >= 8 and not issues and z >= 1.5:
-        grade, color, label = 'A', '#4ade80', '🟢 BET — Signal solide'
-    elif score >= 6 and len(issues) <= 1:
-        grade, color, label = 'B', '#86efac', '🟢 BET — Signal acceptable'
-    elif score >= 4:
-        grade, color, label = 'C', '#fbbf24', '🟡 PRUDENCE — Signal faible'
-    else:
-        grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER'
+    if score >= 8 and not issues:       grade, color, label = 'A', '#4ade80', '🟢 BET — Signal solide'
+    elif score >= 6 and len(issues)<=1: grade, color, label = 'B', '#86efac', '🟢 BET — Signal acceptable'
+    elif score >= 4:                    grade, color, label = 'C', '#fbbf24', '🟡 PRUDENCE — Signal faible'
+    else:                               grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER'
     return {'grade': grade, 'color': color, 'label': label, 'score': score, 'pros': pros, 'issues': issues}
 
 def analyze(games, line, stat_type, adj_mean_override=None):
@@ -524,7 +515,6 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
     opps.sort(key=lambda x: ({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3), -x['line_analysis']['edge']))
     return opps, analyzed, n_games
-
 
 # ╔══════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3                ║
