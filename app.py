@@ -1,8 +1,8 @@
 # ╔══════════════════════════════════════╗
-# ║  app.py — PARTIE 1/4                ║
-# ║  Imports + Stats Engine + Backtest   ║
+# ║  app.py — PARTIE 1/3                ║
+# ║  Colle d'abord, puis 2 puis 3       ║
+# ║  Render Start: python app.py        ║
 # ╚══════════════════════════════════════╝
-# VERSION: 2.1-FIXED — splits=(data.get(stats) or [{}])[0]
 #!/usr/bin/env python3
 """
 Multi-Sport Betting Analyzer v2.0
@@ -47,6 +47,7 @@ SPORT_STATS = {
     'golf':   ['golf_scoring'],
 }
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def to_python(obj):
     if isinstance(obj, dict):    return {k: to_python(v) for k, v in obj.items()}
     if isinstance(obj, list):    return [to_python(v) for v in obj]
@@ -74,6 +75,7 @@ def safe_req(url, params=None, timeout=12):
     except Exception as e: print(f"Req error {url[:60]}: {e}")
     return None
 
+# ── Stats Engine ──────────────────────────────────────────────────────────────
 def normality_tests(vals):
     r = {}
     try:
@@ -137,19 +139,10 @@ def bet_quality(a):
     elif a['rec'] == 'UNDER' and a['l5'] < a['line']: score += 1; pros.append(f"✅ L5 ({a['l5']}) confirme UNDER ({a['line']})")
     elif a['rec'] == 'OVER':  issues.append(f"⚠️ L5 ({a['l5']}) contredit le OVER")
     elif a['rec'] == 'UNDER': issues.append(f"⚠️ L5 ({a['l5']}) contredit le UNDER")
-    # Hard minimums: z >= 0.5σ ET marge absolue >= 0.7 unités
-    # Élimine les faux positifs avec marge trop faible
-    min_ok = z >= 0.5 and margin >= 0.7
-    if not min_ok:
-        grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER — Marge insuffisante'
-    elif score >= 8 and not issues and z >= 1.5:
-        grade, color, label = 'A', '#4ade80', '🟢 BET — Signal solide'
-    elif score >= 6 and len(issues) <= 1:
-        grade, color, label = 'B', '#86efac', '🟢 BET — Signal acceptable'
-    elif score >= 4:
-        grade, color, label = 'C', '#fbbf24', '🟡 PRUDENCE — Signal faible'
-    else:
-        grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER'
+    if score >= 8 and not issues:       grade, color, label = 'A', '#4ade80', '🟢 BET — Signal solide'
+    elif score >= 6 and len(issues)<=1: grade, color, label = 'B', '#86efac', '🟢 BET — Signal acceptable'
+    elif score >= 4:                    grade, color, label = 'C', '#fbbf24', '🟡 PRUDENCE — Signal faible'
+    else:                               grade, color, label = 'AVOID', '#f87171', '🔴 ÉVITER'
     return {'grade': grade, 'color': color, 'label': label, 'score': score, 'pros': pros, 'issues': issues}
 
 def analyze(games, line, stat_type, adj_mean_override=None):
@@ -196,6 +189,7 @@ def analyze(games, line, stat_type, adj_mean_override=None):
     a['quality'] = bet_quality(a)
     return a
 
+# ── Walk-Forward Backtest ─────────────────────────────────────────────────────
 def backtest(games, stat_type, min_train=10, stake=10.0):
     if len(games) < min_train + 3: return None
     chrono  = list(reversed(games))  # oldest first
@@ -230,13 +224,12 @@ def backtest(games, stat_type, min_train=10, stake=10.0):
         'grade_ab_profit': round(sum(r['pnl'] for r in ab),2),
         'per_bet': results[-20:]
     }
-
-
-
 # ╔══════════════════════════════════════╗
-# ║  app.py — PARTIE 2/4                ║
-# ║  MLB + NHL + Tennis + Golf + Odds    ║
+# ║  app.py — PARTIE 2/3                ║
+# ║  Colle à la suite de PARTIE 1       ║
 # ╚══════════════════════════════════════╝
+
+# ── MLB ───────────────────────────────────────────────────────────────────────
 def mlb_get_pitchers():
     today = datetime.now().strftime('%Y-%m-%d'); key = f"mlb_{today}"
     if key in SCHEDULE_CACHE: return SCHEDULE_CACHE[key]
@@ -263,7 +256,7 @@ def mlb_get_gamelog(player_id, stat_type):
     data = safe_req(f"{MLB_BASE}/people/{player_id}/stats",
         params={'stats':'gameLog','season':2025,'group':cfg['group'],'gameType':'R'})
     if not data: return None
-    splits = (data.get('stats') or [{}])[0].get('splits',[])
+    splits = data.get('stats',[{}])[0].get('splits',[])
     if not splits: return None
     games = []
     for s in splits:
@@ -300,7 +293,7 @@ def mlb_opp_k_pct(team):
     if not tid: return None
     d = safe_req(f"{MLB_BASE}/teams/{tid}/stats", params={'stats':'season','group':'hitting','season':2025,'gameType':'R'})
     if not d: return None
-    sp = (d.get('stats') or [{}])[0].get('splits',[])
+    sp = d.get('stats',[{}])[0].get('splits',[{}])
     if not sp: return None
     st = sp[0].get('stat',{})
     k=int(st.get('strikeOuts',0) or 0); ab=int(st.get('atBats',1) or 1)
@@ -308,6 +301,7 @@ def mlb_opp_k_pct(team):
     if pa==0: return None
     kp = k/pa; TEAM_STATS_CACHE[key] = kp; return kp
 
+# ── NHL ───────────────────────────────────────────────────────────────────────
 def nhl_search_player(name):
     key = 'nhl_' + norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
@@ -335,6 +329,7 @@ def nhl_get_saves(player_id):
     if games: GAMELOG_CACHE[ck] = games
     return games or None
 
+# ── Tennis (Jeff Sackmann ATP GitHub CSVs) ────────────────────────────────────
 def tennis_get_aces(player_name, surface=None):
     norm = norm_name(player_name)
     cache_key = f"tennis_{norm}_{surface or 'all'}"
@@ -362,6 +357,7 @@ def tennis_get_aces(player_name, surface=None):
     if games: TENNIS_CACHE[cache_key] = games
     return games or None
 
+# ── Golf (DataGolf API) ───────────────────────────────────────────────────────
 def golf_get_stats(player_name):
     if not DATAGOLF_KEY: return None
     ck = f"golf_{norm_name(player_name)}"
@@ -378,6 +374,7 @@ def golf_get_stats(player_name):
     if games: GAMELOG_CACHE[ck] = games
     return games or None
 
+# ── Odds API ──────────────────────────────────────────────────────────────────
 def get_odds_props(odds_sport, odds_market, max_games=15):
     if not ODDS_API_KEY: return {}, {}
     data = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
@@ -403,6 +400,7 @@ def get_odds_props(odds_sport, odds_market, max_games=15):
         except: continue
     return props, ev
 
+# ── Build opportunity dict ────────────────────────────────────────────────────
 def _build_opp(player, stat_type, sport, line, best, gi, opponent, is_home, a):
     cfg = STAT_CONFIG[stat_type]
     return {
@@ -423,11 +421,7 @@ def _build_opp(player, stat_type, sport, line, best, gi, opponent, is_home, a):
         'recent_games':a['recent']
     }
 
-
-# ╔══════════════════════════════════════╗
-# ║  app.py — PARTIE 3/4                ║
-# ║  scan_sport()                        ║
-# ╚══════════════════════════════════════╝
+# ── Main scan ─────────────────────────────────────────────────────────────────
 def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
     stat_types = [stat_type_filter] if stat_type_filter else SPORT_STATS.get(sport,[])
     if not stat_types: return [],0,0
@@ -519,13 +513,196 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
     opps.sort(key=lambda x: ({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3), -x['line_analysis']['edge']))
     return opps, analyzed, n_games
-
-
-
 # ╔══════════════════════════════════════╗
-# ║  app.py — PARTIE 4/4                ║
-# ║  Toutes les routes Flask             ║
+# ║  app.py — PARTIE 3/3                ║
+# ║  Colle à la suite de PARTIE 2       ║
 # ╚══════════════════════════════════════╝
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.route('/api/daily-opportunities', methods=['GET'])
+def daily_opportunities():
+    try:
+        sport     = request.args.get('sport', 'mlb').lower()
+        stat_type = request.args.get('stat_type', None)
+        min_edge  = float(request.args.get('min_edge', 5))
+        if sport not in SPORT_STATS:
+            return jsonify({'status':'ERROR','message':f"sport doit être: {list(SPORT_STATS.keys())}"}),400
+        opps, analyzed, n_games = scan_sport(sport, stat_type, min_edge)
+        if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
+            return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
+                'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
+        return jsonify(to_python({
+            'status':'SUCCESS','sport':sport,'version':'2.0',
+            'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
+            'total_games':n_games,'players_analyzed':analyzed,
+            'opportunities_found':len(opps),'opportunities':opps,
+            'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')
+        }))
+    except Exception as e:
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:800]}),500
+
+
+@app.route('/api/actual-result', methods=['GET'])
+def actual_result():
+    """
+    Récupère le vrai résultat d'un joueur pour une date donnée.
+    Utilisé par le frontend pour résoudre automatiquement les bets sauvegardés.
+    Params: player, stat_type, sport, date (YYYY-MM-DD)
+    """
+    try:
+        player_name = request.args.get('player','')
+        stat_type   = request.args.get('stat_type','')
+        sport       = request.args.get('sport','mlb')
+        date_str    = request.args.get('date','')
+        if not player_name or not stat_type:
+            return jsonify({'status':'ERROR','message':'player et stat_type requis'}),400
+
+        games = None
+
+        if sport == 'mlb':
+            cfg = STAT_CONFIG.get(stat_type)
+            if not cfg: return jsonify({'status':'ERROR','message':'stat_type invalide'}),400
+            is_p = cfg['group'] == 'pitching'
+            if is_p:
+                # First try today's probable pitchers list (cached)
+                pitchers = mlb_get_pitchers()
+                pitcher = next((p for p in pitchers if names_match(player_name,p['name'])),None)
+                if pitcher:
+                    games = mlb_get_gamelog(pitcher['id'], stat_type)
+                else:
+                    # Fallback: search by name
+                    pid = mlb_search_player(player_name)
+                    if pid: games = mlb_get_gamelog(pid, stat_type)
+            else:
+                pid = mlb_search_player(player_name)
+                if pid: games = mlb_get_gamelog(pid, stat_type)
+
+        elif sport == 'nhl':
+            pid = nhl_search_player(player_name)
+            if pid: games = nhl_get_saves(pid)
+
+        elif sport == 'tennis':
+            games = tennis_get_aces(player_name)
+
+        if not games:
+            return jsonify({'status':'NOT_FOUND','message':f'Aucune donnée pour {player_name}'}),404
+
+        # Find game matching the requested date
+        if date_str:
+            target = date_str[:10]
+            # Exact match
+            exact = [g for g in games if g.get('date','')[:10] == target]
+            if exact:
+                return jsonify(to_python({'status':'SUCCESS','player':player_name,
+                    'stat_type':stat_type,'date':target,
+                    'actual_value':exact[0]['stat'],'found':'exact'}))
+            # Closest date on or after target (game may be logged next day)
+            for g in sorted(games, key=lambda x: x.get('date','')):
+                gdate = g.get('date','')[:10]
+                if gdate >= target:
+                    return jsonify(to_python({'status':'SUCCESS','player':player_name,
+                        'stat_type':stat_type,'date':gdate,
+                        'actual_value':g['stat'],'found':'closest'}))
+
+        # No date or no match — return most recent
+        return jsonify(to_python({'status':'SUCCESS','player':player_name,
+            'stat_type':stat_type,'date':games[0].get('date','')[:10],
+            'actual_value':games[0]['stat'],'found':'latest'}))
+
+    except Exception as e:
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
+
+
+@app.route('/api/backtest', methods=['GET'])
+def run_backtest():
+    """
+    Walk-forward backtest pour un joueur. 
+    Params: player, stat_type, sport
+    """
+    try:
+        player_name = request.args.get('player','')
+        stat_type   = request.args.get('stat_type','pitcher_strikeouts')
+        sport       = request.args.get('sport','mlb')
+        if not player_name:
+            return jsonify({'status':'ERROR','message':'player param requis'}),400
+        if stat_type not in STAT_CONFIG:
+            return jsonify({'status':'ERROR','message':'stat_type invalide'}),400
+
+        games = None
+        if sport == 'mlb':
+            cfg = STAT_CONFIG[stat_type]
+            is_p = cfg['group'] == 'pitching'
+            if is_p:
+                pitchers = mlb_get_pitchers()
+                pitcher = next((p for p in pitchers if names_match(player_name,p['name'])),None)
+                if pitcher:
+                    games = mlb_get_gamelog(pitcher['id'], stat_type)
+                else:
+                    pid = mlb_search_player(player_name)
+                    if pid: games = mlb_get_gamelog(pid, stat_type)
+            else:
+                pid = mlb_search_player(player_name)
+                if pid: games = mlb_get_gamelog(pid, stat_type)
+        elif sport == 'nhl':
+            pid = nhl_search_player(player_name)
+            if pid: games = nhl_get_saves(pid)
+        elif sport == 'tennis':
+            games = tennis_get_aces(player_name)
+
+        if not games:
+            return jsonify({'status':'ERROR','message':f'Aucune donnée pour {player_name}'}),404
+
+        result = backtest(games, stat_type)
+        if not result:
+            return jsonify({'status':'ERROR','message':'Pas assez de données (min 13 matchs)'}),400
+
+        return jsonify(to_python({'status':'SUCCESS','player':player_name,
+            'stat_type':stat_type,'sport':sport,
+            'total_games_available':len(games),'backtest':result}))
+
+    except Exception as e:
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
+
+
+@app.route('/api/mlb/schedule', methods=['GET'])
+def mlb_schedule():
+    p = mlb_get_pitchers()
+    return jsonify({'status':'SUCCESS','pitchers':p,'count':len(p)})
+
+
+@app.route('/api/odds/usage', methods=['GET'])
+def usage():
+    try:
+        r = requests.get(f"{ODDS_BASE}/sports", params={'apiKey':ODDS_API_KEY}, timeout=10)
+        return jsonify({'used':r.headers.get('x-requests-used','N/A'),
+                        'remaining':r.headers.get('x-requests-remaining','N/A')})
+    except Exception as e:
+        return jsonify({'error':str(e)}),500
+
+
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({'status':'healthy','version':'2.0',
+        'sports':list(SPORT_STATS.keys()),
+        'endpoints':['/api/daily-opportunities','/api/actual-result','/api/backtest','/api/odds/usage'],
+        'datagolf_key_set':bool(DATAGOLF_KEY)})
+
+
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.0',
+                    'sports':['mlb','nhl','tennis','golf']})
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    print("🎰 Multi-Sport Analyzer v2.0 — MLB|NHL|Tennis|Golf|Backtest|AutoResult")
+    app.run(host='0.0.0.0', port=port, debug=False)
+# PARTIE 4/4 — colle a la suite
 @app.route('/api/daily-opportunities', methods=['GET'])
 def daily_opportunities():
     try:
