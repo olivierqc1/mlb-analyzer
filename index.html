@@ -1,6 +1,6 @@
-<!-- ╔═══════════════════════════════════════════════╗ -->
-<!-- ║  index.html — PARTIE 1/2                     ║ -->
-<!-- ╚═══════════════════════════════════════════════╝ -->
+<!-- ╔═══════════════════════════════════════╗ -->
+<!-- ║  index.html — PARTIE 1/4              ║ -->
+<!-- ╚═══════════════════════════════════════╝ -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -8,322 +8,586 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>🎰 Multi-Sport Analyzer</title>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
-.container { max-width: 600px; margin: 0 auto; padding: 12px; }
-.header { text-align: center; padding: 12px 0 8px; }
-.header h1 { font-size: 1.3em; font-weight: 800; }
-.header p { color: #64748b; font-size: 10px; margin-top: 2px; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+.container{max-width:600px;margin:0 auto;padding:12px}
+.header{text-align:center;padding:12px 0 8px}
+.header h1{font-size:1.3em;font-weight:800}
+.header p{color:#64748b;font-size:10px;margin-top:2px}
 
-/* Sport tabs */
-.sport-tabs { display: grid; grid-template-columns: repeat(4,1fr); gap: 5px; margin-bottom: 10px; }
-.sport-tab { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 10px 4px; text-align: center; cursor: pointer; transition: all .2s; }
-.sport-tab.active { border: 2px solid; }
-.sport-tab.active.mlb  { background: rgba(37,99,235,.2);  border-color: #2563eb; }
-.sport-tab.active.nhl  { background: rgba(220,38,38,.2);  border-color: #dc2626; }
-.sport-tab.active.golf { background: rgba(22,163,74,.2);  border-color: #16a34a; }
-.sport-tab.active.ten  { background: rgba(202,138,4,.2);  border-color: #ca8a04; }
-.sport-tab.soon { opacity: .5; cursor: default; }
-.sport-tab .s-icon { font-size: 20px; display: block; margin-bottom: 3px; }
-.sport-tab .s-label { font-size: 10px; font-weight: 700; color: #94a3b8; }
-.sport-tab.active .s-label { color: white; }
-.sport-tab .s-status { font-size: 8px; color: #475569; }
+.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
+.mode-tab{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;text-align:center;cursor:pointer;font-size:11px;color:#94a3b8;font-weight:600;transition:all .2s}
+.mode-tab.active{background:#7c3aed;border-color:#7c3aed;color:white}
 
-/* Stat type tabs */
-.stat-tabs { display: flex; gap: 5px; margin-bottom: 10px; flex-wrap: wrap; }
-.stat-tab { background: #1e293b; border: 1px solid #334155; border-radius: 7px; padding: 7px 12px; cursor: pointer; font-size: 12px; color: #94a3b8; }
-.stat-tab.active { background: #334155; color: white; font-weight: 700; }
+.sport-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px}
+.sport-tab{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;transition:all .2s}
+.sport-tab.active.mlb{background:rgba(37,99,235,.2);border:2px solid #2563eb}
+.sport-tab.active.nhl{background:rgba(220,38,38,.2);border:2px solid #dc2626}
+.sport-tab.active.ten{background:rgba(202,138,4,.2);border:2px solid #ca8a04}
+.sport-tab.active.golf{background:rgba(22,163,74,.2);border:2px solid #16a34a}
+.sport-tab .s-icon{font-size:18px;display:block;margin-bottom:2px}
+.sport-tab .s-label{font-size:10px;font-weight:700;color:#94a3b8}
+.sport-tab.active .s-label{color:white}
+.sport-tab .s-sub{font-size:8px;color:#475569}
 
-.controls { background: #1e293b; border-radius: 10px; padding: 10px; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
-.edge-label { color: #94a3b8; font-size: 12px; flex: 1; }
-.edge-input { background: #334155; border: 1px solid #475569; border-radius: 7px; padding: 9px; color: white; font-size: 13px; width: 65px; }
-.btn-scan { background: linear-gradient(to right, #2563eb, #7c3aed); border: none; border-radius: 8px; padding: 10px 16px; color: white; font-weight: 700; cursor: pointer; font-size: 13px; }
-.btn-scan:disabled { opacity: .5; cursor: not-allowed; }
+.stat-tabs{display:flex;gap:5px;margin-bottom:10px;flex-wrap:wrap}
+.stat-tab{background:#1e293b;border:1px solid #334155;border-radius:7px;padding:7px 12px;cursor:pointer;font-size:11px;color:#94a3b8}
+.stat-tab.active{background:#334155;color:white;font-weight:700}
 
-.status { text-align: center; color: #60a5fa; font-size: 11px; margin-bottom: 6px; min-height: 16px; }
-.err { background: rgba(220,38,38,.2); border: 1px solid #dc2626; border-radius: 8px; padding: 9px; margin-bottom: 8px; font-size: 12px; color: #fca5a5; }
-.info-msg { background: rgba(37,99,235,.15); border: 1px solid #2563eb; border-radius: 8px; padding: 12px; font-size: 12px; color: #93c5fd; text-align: center; }
+.controls{background:#1e293b;border-radius:10px;padding:10px;margin-bottom:10px;display:flex;gap:8px;align-items:center}
+.edge-label{color:#94a3b8;font-size:12px;flex:1}
+.edge-input{background:#334155;border:1px solid #475569;border-radius:7px;padding:9px;color:white;font-size:13px;width:65px}
+.btn-scan{background:linear-gradient(to right,#2563eb,#7c3aed);border:none;border-radius:8px;padding:10px 16px;color:white;font-weight:700;cursor:pointer;font-size:13px;white-space:nowrap}
+.btn-scan:disabled{opacity:.5;cursor:not-allowed}
 
-.summary { background: #1e293b; border-radius: 10px; padding: 8px; margin-bottom: 10px; display: grid; grid-template-columns: repeat(4,1fr); gap: 4px; }
-.si { text-align: center; padding: 4px; }
-.sv { font-size: 1.3em; font-weight: 700; color: #4ade80; }
-.sl { font-size: 9px; color: #64748b; margin-top: 1px; }
+.status{text-align:center;color:#60a5fa;font-size:11px;margin-bottom:6px;min-height:16px}
+.err{background:rgba(220,38,38,.2);border:1px solid #dc2626;border-radius:8px;padding:9px;margin-bottom:8px;font-size:12px;color:#fca5a5}
+.info-msg{background:rgba(37,99,235,.15);border:1px solid #2563eb;border-radius:8px;padding:12px;font-size:12px;color:#93c5fd;text-align:center}
+.save-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#16a34a;color:white;padding:10px 20px;border-radius:20px;font-size:12px;font-weight:700;z-index:999;opacity:0;transition:opacity .3s}
+.save-toast.show{opacity:1}
 
-.section-title { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 5px; }
+.summary{background:#1e293b;border-radius:10px;padding:8px;margin-bottom:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.si{text-align:center;padding:4px}
+.sv{font-size:1.3em;font-weight:700;color:#4ade80}
+.sl{font-size:9px;color:#64748b;margin-top:1px}
 
-.quality-banner { border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
-.qb-a { background: rgba(22,163,74,.2);   border: 1.5px solid #16a34a; }
-.qb-b { background: rgba(134,239,172,.1); border: 1.5px solid #86efac; }
-.qb-c { background: rgba(202,138,4,.15);  border: 1.5px solid #ca8a04; }
-.qb-grade { font-size: 1.3em; font-weight: 800; margin-bottom: 4px; }
-.qb-pros  { list-style: none; }
-.qb-pros li { font-size: 10px; padding: 2px 0; color: #94a3b8; }
-.qb-issues { list-style: none; margin-top: 4px; }
-.qb-issues li { font-size: 10px; padding: 2px 0; color: #f87171; }
+.section-title{color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:8px 0 5px}
 
-.card { background: #1e293b; border-radius: 12px; padding: 12px; margin-bottom: 9px; border: 1px solid #334155; }
-.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 9px; }
-.pname { font-weight: 700; font-size: 14px; }
-.ptags { display: flex; gap: 5px; margin-top: 4px; flex-wrap: wrap; }
-.chip { border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: 600; }
-.chip-edge { background: rgba(251,191,36,.2); color: #fbbf24; border: 1px solid #fbbf24; }
-.chip-stat { background: rgba(99,102,241,.2); color: #a5b4fc; border: 1px solid #6366f1; }
-.matchup-txt { color: #64748b; font-size: 10px; margin-top: 3px; }
-.rec-badge { padding: 6px 10px; border-radius: 8px; font-weight: 700; font-size: 12px; flex-shrink: 0; text-align: center; }
-.badge-over  { background: rgba(22,163,74,.25); color: #4ade80; border: 1px solid #16a34a; }
-.badge-under { background: rgba(220,38,38,.25); color: #f87171; border: 1px solid #dc2626; }
+/* History tab */
+.hist-summary{background:#1e293b;border-radius:10px;padding:12px;margin-bottom:10px}
+.hist-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.kpi-box{background:#0f172a;border-radius:8px;padding:10px;text-align:center}
+.kpi-val{font-size:1.5em;font-weight:800}
+.kpi-lbl{font-size:9px;color:#64748b;margin-top:2px}
+.kpi-green{color:#4ade80}.kpi-red{color:#f87171}.kpi-yellow{color:#fbbf24}.kpi-blue{color:#60a5fa}
 
-.val-row { display: flex; gap: 5px; margin-bottom: 6px; flex-wrap: wrap; }
-.val-chip { border-radius: 5px; padding: 3px 7px; font-size: 10px; font-weight: 600; }
-.val-ok  { background: rgba(22,163,74,.2); color: #4ade80; }
-.val-warn{ background: rgba(202,138,4,.2); color: #fbbf24; }
-.val-bad { background: rgba(220,38,38,.2); color: #f87171; }
-.verdict-txt { font-size: 10px; margin-bottom: 7px; }
+.hist-filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.hist-filter{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:5px 10px;font-size:10px;cursor:pointer;color:#94a3b8}
+.hist-filter.active{background:#334155;color:white}
 
-.stats-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 3px; background: #0f172a; border-radius: 7px; padding: 7px; margin-bottom: 7px; }
-.sc { text-align: center; }
-.sc .l { color: #64748b; font-size: 9px; }
-.sc .v { font-size: 12px; font-weight: 600; }
+.bet-card{background:#1e293b;border-radius:10px;padding:12px;margin-bottom:8px;border-left:3px solid #334155}
+.bet-card.pending{border-left-color:#fbbf24}
+.bet-card.won{border-left-color:#16a34a}
+.bet-card.lost{border-left-color:#dc2626}
+.bet-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.bet-player{font-weight:700;font-size:13px}
+.bet-meta{font-size:10px;color:#64748b;margin-top:2px}
+.bet-result-badge{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;flex-shrink:0}
+.rb-won{background:rgba(22,163,74,.25);color:#4ade80}
+.rb-lost{background:rgba(220,38,38,.25);color:#f87171}
+.rb-pending{background:rgba(251,191,36,.2);color:#fbbf24}
+.rb-loading{background:rgba(96,165,250,.2);color:#60a5fa}
+.bet-details{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:#0f172a;border-radius:6px;padding:6px;margin-top:6px;font-size:10px;text-align:center}
+.bd-val{font-weight:700;font-size:12px}
+.bd-lbl{color:#64748b;font-size:9px}
+.btn-resolve{background:#334155;border:none;border-radius:6px;padding:4px 8px;color:#94a3b8;font-size:10px;cursor:pointer;margin-top:6px}
+.btn-resolve:hover{color:white}
+.btn-clear-all{background:rgba(220,38,38,.2);border:1px solid #dc2626;border-radius:7px;padding:6px 12px;color:#f87171;font-size:11px;cursor:pointer;width:100%;margin-top:8px}
+
+/* Bet quality */
+.quality-banner{border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.qb-a{background:rgba(22,163,74,.2);border:1.5px solid #16a34a}
+.qb-b{background:rgba(134,239,172,.1);border:1.5px solid #86efac}
+.qb-c{background:rgba(202,138,4,.15);border:1.5px solid #ca8a04}
+.qb-grade{font-size:1.3em;font-weight:800;margin-bottom:4px}
+.qb-pros{list-style:none}
+.qb-pros li{font-size:10px;padding:2px 0;color:#94a3b8}
+.qb-issues{list-style:none;margin-top:4px}
+.qb-issues li{font-size:10px;padding:2px 0;color:#f87171}
+
+.card{background:#1e293b;border-radius:12px;padding:12px;margin-bottom:9px;border:1px solid #334155}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:9px}
+.pname{font-weight:700;font-size:14px}
+.ptags{display:flex;gap:5px;margin-top:4px;flex-wrap:wrap}
+.chip{border-radius:4px;padding:2px 6px;font-size:10px;font-weight:600}
+.chip-edge{background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid #fbbf24}
+.chip-stat{background:rgba(99,102,241,.2);color:#a5b4fc;border:1px solid #6366f1}
+.matchup-txt{color:#64748b;font-size:10px;margin-top:3px}
+.rec-badge{padding:6px 10px;border-radius:8px;font-weight:700;font-size:12px;flex-shrink:0;text-align:center}
+.badge-over{background:rgba(22,163,74,.25);color:#4ade80;border:1px solid #16a34a}
+.badge-under{background:rgba(220,38,38,.25);color:#f87171;border:1px solid #dc2626}
+
+.val-row{display:flex;gap:5px;margin-bottom:6px;flex-wrap:wrap}
+.val-chip{border-radius:5px;padding:3px 7px;font-size:10px;font-weight:600}
+.val-ok{background:rgba(22,163,74,.2);color:#4ade80}
+.val-warn{background:rgba(202,138,4,.2);color:#fbbf24}
+.val-bad{background:rgba(220,38,38,.2);color:#f87171}
+.verdict-txt{font-size:10px;margin-bottom:7px}
+
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;background:#0f172a;border-radius:7px;padding:7px;margin-bottom:7px}
+.sc{text-align:center}
+.sc .l{color:#64748b;font-size:9px}
+.sc .v{font-size:12px;font-weight:600}
 .cg{color:#4ade80}.cb{color:#60a5fa}.cy{color:#fbbf24}.cp{color:#a78bfa}
 
-.prob-wrap { margin-bottom: 7px; }
-.prob-labels { display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; margin-bottom: 3px; }
-.prob-bar { height: 7px; background: #0f172a; border-radius: 4px; overflow: hidden; }
-.prob-fill { height: 100%; border-radius: 4px; }
-.pf-over  { background: linear-gradient(to right,#16a34a,#4ade80); }
-.pf-under { background: linear-gradient(to right,#dc2626,#f87171); }
+.prob-wrap{margin-bottom:7px}
+.prob-labels{display:flex;justify-content:space-between;font-size:10px;color:#94a3b8;margin-bottom:3px}
+.prob-bar{height:7px;background:#0f172a;border-radius:4px;overflow:hidden}
+.prob-fill{height:100%;border-radius:4px}
+.pf-over{background:linear-gradient(to right,#16a34a,#4ade80)}
+.pf-under{background:linear-gradient(to right,#dc2626,#f87171)}
 
-.k-history { display: flex; gap: 3px; align-items: flex-end; height: 44px; background: #0f172a; border-radius: 5px; padding: 4px; margin-bottom: 3px; }
-.k-bar { flex: 1; border-radius: 2px 2px 0 0; min-width: 9px; position: relative; }
-.kb-over  { background: linear-gradient(to top,#16a34a,#4ade80); }
-.kb-under { background: linear-gradient(to top,#7f1d1d,#dc2626); }
-.k-line   { position: absolute; left:0; right:0; height: 2px; background: #fbbf24; }
-.k-legend { display: flex; justify-content: space-between; font-size: 9px; color: #64748b; margin-bottom: 6px; }
+.k-history{display:flex;gap:3px;align-items:flex-end;height:44px;background:#0f172a;border-radius:5px;padding:4px;margin-bottom:3px}
+.k-bar{flex:1;border-radius:2px 2px 0 0;min-width:9px;position:relative}
+.kb-over{background:linear-gradient(to top,#16a34a,#4ade80)}
+.kb-under{background:linear-gradient(to top,#7f1d1d,#dc2626)}
+.k-line{position:absolute;left:0;right:0;height:2px;background:#fbbf24}
+.k-legend{display:flex;justify-content:space-between;font-size:9px;color:#64748b;margin-bottom:6px}
 
-.expand-btn { width:100%; background:none; border:none; color:#64748b; font-size:10px; padding:5px; cursor:pointer; }
-.detail-wrap { margin-top: 8px; }
-.detail-section { background: #0f172a; border-radius: 7px; padding: 9px; margin-bottom: 6px; }
-.detail-title { color: #94a3b8; font-size: 10px; text-transform: uppercase; margin-bottom: 6px; }
-.dr { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #1e293b; font-size: 11px; }
-.dr:last-child { border-bottom: none; }
-.dl { color: #64748b; } .dv { font-weight: 600; }
-
-.starts-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 3px; margin-top: 6px; }
-.sc-cell { background: #1e293b; border-radius: 5px; padding: 4px 3px; text-align: center; }
-.sc-cell.over  { border-top: 2px solid #16a34a; }
-.sc-cell.under { border-top: 2px solid #dc2626; }
-.sk { font-size: 13px; font-weight: 700; }
-
-.empty { text-align: center; color: #475569; padding: 50px 20px; }
-.empty-icon { font-size: 44px; margin-bottom: 10px; }
+.expand-btn{width:100%;background:none;border:none;color:#64748b;font-size:10px;padding:5px;cursor:pointer}
+.detail-wrap{margin-top:8px}
+.detail-section{background:#0f172a;border-radius:7px;padding:9px;margin-bottom:6px}
+.detail-title{color:#94a3b8;font-size:10px;text-transform:uppercase;margin-bottom:6px}
+.dr{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e293b;font-size:11px}
+.dr:last-child{border:none}
+.dl{color:#64748b}.dv{font-weight:600}
+.starts-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-top:6px}
+.sc-cell{background:#1e293b;border-radius:5px;padding:4px 3px;text-align:center}
+.sc-cell.over{border-top:2px solid #16a34a}
+.sc-cell.under{border-top:2px solid #dc2626}
+.sk{font-size:13px;font-weight:700}
+.empty{text-align:center;color:#475569;padding:50px 20px}
+.empty-icon{font-size:44px;margin-bottom:10px}
 </style>
 </head>
-
-
-<!-- ╔═══════════════════════════════════════════════╗ -->
-<!-- ║  index.html — PARTIE 2/2                     ║ -->
-<!-- ║  Colle à la suite de PARTIE 1                ║ -->
-<!-- ╚═══════════════════════════════════════════════╝ -->
+<!-- ╔════════════════════════════════════════╗ -->
+<!-- ║  index.html — PARTIE 2/4              ║ -->
+<!-- ║  Colle à la suite de PARTIE 1         ║ -->
+<!-- ╚════════════════════════════════════════╝ -->
+<!-- ╔═══════════════════════════════════════╗ -->
+<!-- ║  index.html — PARTIE 2/2             ║ -->
+<!-- ╚═══════════════════════════════════════╝ -->
 <body>
 <div class="container">
   <div class="header">
     <h1>🎰 Multi-Sport Analyzer</h1>
-    <p>MLB · NHL · Golf (bientôt) · Tennis (bientôt)</p>
+    <p>Bets sauvegardés automatiquement · Résultats réels récupérés</p>
   </div>
 
-  <!-- Sport selector -->
-  <div class="sport-tabs">
-    <div class="sport-tab mlb active" onclick="setSport('mlb',this)">
-      <span class="s-icon">⚾</span>
-      <span class="s-label">MLB</span>
-      <span class="s-status">K · TB</span>
-    </div>
-    <div class="sport-tab nhl" onclick="setSport('nhl',this)">
-      <span class="s-icon">🏒</span>
-      <span class="s-label">NHL</span>
-      <span class="s-status">Saves</span>
-    </div>
-    <div class="sport-tab golf soon" onclick="showSoon('golf')">
-      <span class="s-icon">⛳</span>
-      <span class="s-label">Golf</span>
-      <span class="s-status">Bientôt</span>
-    </div>
-    <div class="sport-tab ten soon" onclick="showSoon('tennis')">
-      <span class="s-icon">🎾</span>
-      <span class="s-label">Tennis</span>
-      <span class="s-status">Bientôt</span>
-    </div>
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="modeScanner" onclick="setMode('scanner')">📊 Scanner</div>
+    <div class="mode-tab" id="modeHistory" onclick="setMode('history')">📋 Historique</div>
+    <div class="mode-tab" id="modeBacktest" onclick="setMode('backtest')">🔬 Backtest</div>
   </div>
 
-  <!-- Stat type tabs (dynamic) -->
-  <div class="stat-tabs" id="statTabs"></div>
-
-  <div class="controls">
-    <span class="edge-label">Edge min. (%)</span>
-    <input type="number" class="edge-input" id="minEdge" value="5" min="1" max="20">
-    <button class="btn-scan" id="btnScan" onclick="scan()">🔍 Scanner</button>
+  <!-- ═══ SCANNER ═══ -->
+  <div id="scannerMode">
+    <div class="sport-tabs">
+      <div class="sport-tab mlb active" onclick="setSport('mlb',this)"><span class="s-icon">⚾</span><span class="s-label">MLB</span><span class="s-sub">K · TB</span></div>
+      <div class="sport-tab nhl" onclick="setSport('nhl',this)"><span class="s-icon">🏒</span><span class="s-label">NHL</span><span class="s-sub">Saves</span></div>
+      <div class="sport-tab ten" onclick="setSport('tennis',this)"><span class="s-icon">🎾</span><span class="s-label">Tennis</span><span class="s-sub">Aces</span></div>
+      <div class="sport-tab golf" onclick="setSport('golf',this)"><span class="s-icon">⛳</span><span class="s-label">Golf</span><span class="s-sub">SG</span></div>
+    </div>
+    <div class="stat-tabs" id="statTabs"></div>
+    <div class="controls">
+      <span class="edge-label">Edge min. (%)</span>
+      <input type="number" class="edge-input" id="minEdge" value="5" min="1" max="20">
+      <button class="btn-scan" id="btnScan" onclick="scan()">🔍 Scanner</button>
+    </div>
+    <div class="status" id="scanStatus"></div>
+    <div id="scanErr"></div>
+    <div id="summary" style="display:none" class="summary">
+      <div class="si"><div class="sv" id="sGames">-</div><div class="sl">Matchs</div></div>
+      <div class="si"><div class="sv" id="sAnalyzed">-</div><div class="sl">Analysés</div></div>
+      <div class="si"><div class="sv" id="sOpps">-</div><div class="sl">Opps</div></div>
+      <div class="si"><div class="sv" id="sEdge">-</div><div class="sl">Edge moy.</div></div>
+    </div>
+    <div id="scanContent"></div>
   </div>
 
-  <div class="status" id="status"></div>
-  <div id="errMsg"></div>
-  <div id="summary" style="display:none" class="summary">
-    <div class="si"><div class="sv" id="sGames">-</div><div class="sl">Matchs</div></div>
-    <div class="si"><div class="sv" id="sAnalyzed">-</div><div class="sl">Analysés</div></div>
-    <div class="si"><div class="sv" id="sOpps">-</div><div class="sl">Opps</div></div>
-    <div class="si"><div class="sv" id="sEdge">-</div><div class="sl">Edge moy.</div></div>
+  <!-- ═══ HISTORIQUE ═══ -->
+  <div id="historyMode" style="display:none">
+    <div id="histSummary"></div>
+    <div class="hist-filters" id="histFilters">
+      <div class="hist-filter active" onclick="filterHist('all',this)">Tous</div>
+      <div class="hist-filter" onclick="filterHist('pending',this)">⏳ En attente</div>
+      <div class="hist-filter" onclick="filterHist('won',this)">✅ Gagnés</div>
+      <div class="hist-filter" onclick="filterHist('lost',this)">❌ Perdus</div>
+      <div class="hist-filter" onclick="filterHist('mlb',this)">⚾ MLB</div>
+      <div class="hist-filter" onclick="filterHist('nhl',this)">🏒 NHL</div>
+      <div class="hist-filter" onclick="filterHist('tennis',this)">🎾 Tennis</div>
+    </div>
+    <button onclick="resolveAllPending()" style="width:100%;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px;color:#60a5fa;font-size:12px;cursor:pointer;margin-bottom:10px;font-weight:600">
+      🔄 Résoudre tous les bets en attente
+    </button>
+    <div id="histContent"></div>
+    <button class="btn-clear-all" onclick="clearAll()">🗑️ Effacer tout l'historique</button>
   </div>
-  <div id="content"></div>
+
+  <!-- ═══ BACKTEST ═══ -->
+  <div id="backtestMode" style="display:none">
+    <div style="background:#1e293b;border-radius:10px;padding:12px;margin-bottom:10px">
+      <div style="color:#a78bfa;font-weight:700;font-size:13px;margin-bottom:6px">🔬 Backtest automatique</div>
+      <p style="font-size:11px;color:#64748b;margin-bottom:10px">Basé sur ton historique sauvegardé. Le backtest utilise tes vrais bets résolus pour calculer ta performance réelle.</p>
+      <div id="btContent"></div>
+    </div>
+  </div>
 </div>
+
+<!-- Toast -->
+<div class="save-toast" id="toast"></div>
 
 <script>
 const API = 'https://mlb-analyzer-fs15.onrender.com';
-
-const SPORT_CONFIG = {
-  mlb:  { stats: [{key:'', label:'Tous'},{key:'pitcher_strikeouts',label:'⚾ K'},{key:'batter_total_bases',label:'🏏 TB'}] },
-  nhl:  { stats: [{key:'', label:'Tous'},{key:'goalie_saves',label:'🥅 Saves'}] },
-  golf: { stats: [] },
-  tennis: { stats: [] }
+const STORAGE_KEY = 'multisport_bets_v2';
+const SPORT_STATS_MAP = {
+  mlb:    [{key:'',label:'Tous'},{key:'pitcher_strikeouts',label:'⚾ K'},{key:'batter_total_bases',label:'🏏 TB'}],
+  nhl:    [{key:'',label:'Tous'},{key:'goalie_saves',label:'🥅 Saves'}],
+  tennis: [{key:'',label:'Tous'},{key:'tennis_aces',label:'🎾 Aces'}],
+  golf:   [{key:'',label:'Tous'},{key:'golf_scoring',label:'⛳ SG'}]
 };
 
-let currentSport = 'mlb';
-let currentStat  = '';
+let currentSport='mlb', currentStat='', currentMode='scanner', histFilter='all';
 
-function setSport(sport, el) {
-  if (el.classList.contains('soon')) return;
-  document.querySelectorAll('.sport-tab').forEach(t => t.classList.remove('active'));
+// ── Storage helpers ──────────────────────────────────────────────────────────
+function loadBets() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); } catch{ return []; }
+}
+function saveBets(bets) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bets));
+}
+function addBet(bet) {
+  const bets = loadBets();
+  // Avoid duplicate (same player + stat_type + date)
+  const dup = bets.find(b => b.player===bet.player && b.stat_type===bet.stat_type && b.scan_date===bet.scan_date);
+  if (!dup) { bets.unshift(bet); saveBets(bets); }
+}
+
+// ── Auto-save bets from scan ─────────────────────────────────────────────────
+function autoSaveOpps(opps, sport) {
+  const today = new Date().toISOString().slice(0,10);
+  let saved = 0;
+  opps.forEach(o => {
+    // Only save Grade A and B
+    if (!['A','B'].includes(o.quality?.grade)) return;
+    const bet = {
+      id: `${o.player}_${o.stat_type}_${today}_${Date.now()}`,
+      player: o.player,
+      sport: sport,
+      stat_type: o.stat_type,
+      stat_label: o.stat_label,
+      scan_date: today,
+      recommendation: o.line_analysis.recommendation,
+      bookmaker_line: o.line_analysis.bookmaker_line,
+      edge: o.line_analysis.edge,
+      predicted_mean: o.deep_stats.adjusted_mean,
+      kelly: o.line_analysis.kelly_criterion,
+      grade: o.quality.grade,
+      game_info: o.game_info,
+      status: 'pending',  // pending | won | lost
+      actual_value: null,
+      resolved_date: null
+    };
+    addBet(bet);
+    saved++;
+  });
+  if (saved > 0) showToast(`✅ ${saved} bet${saved>1?'s':''} Grade A/B sauvegardé${saved>1?'s':''}`);
+}
+
+// ── Resolve bet against actual result ────────────────────────────────────────
+async function resolveBet(betId) {
+  const bets = loadBets();
+  const bet = bets.find(b => b.id === betId);
+  if (!bet || bet.status !== 'pending') return;
+
+  // Show loading
+  const el = document.getElementById('resolve_'+betId);
+  if (el) { el.className='bet-result-badge rb-loading'; el.textContent='⏳'; }
+
+  try {
+    const url = `${API}/api/actual-result?player=${encodeURIComponent(bet.player)}&stat_type=${bet.stat_type}&sport=${bet.sport}&date=${bet.scan_date}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.status !== 'SUCCESS') throw new Error(data.message);
+
+    const actual = data.actual_value;
+    const line = bet.bookmaker_line;
+    const won = (bet.recommendation==='OVER' && actual > line) || (bet.recommendation==='UNDER' && actual < line);
+
+    // Update bet
+    const idx = bets.findIndex(b=>b.id===betId);
+    bets[idx].status = won ? 'won' : 'lost';
+    bets[idx].actual_value = actual;
+    bets[idx].resolved_date = data.date;
+    saveBets(bets);
+
+    renderHistory();
+  } catch(e) {
+    if (el) { el.className='bet-result-badge rb-pending'; el.textContent='⏳ En attente'; }
+    console.error('Resolve error:', e.message);
+  }
+}
+
+async function resolveAllPending() {
+  const bets = loadBets().filter(b=>b.status==='pending');
+  if (!bets.length) { showToast('Aucun bet en attente'); return; }
+  showToast(`🔄 Résolution de ${bets.length} bets...`);
+  for (const bet of bets) {
+    await resolveBet(bet.id);
+    await new Promise(r=>setTimeout(r,400)); // rate limit
+  }
+  showToast('✅ Tous les bets résolus!');
+}
+
+// ── History rendering ─────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode=mode;
+  ['scanner','history','backtest'].forEach(m=>{
+    document.getElementById(m+'Mode').style.display=m===mode?'block':'none';
+    document.getElementById('mode'+m.charAt(0).toUpperCase()+m.slice(1)).className='mode-tab'+(m===mode?' active':'');
+  });
+  if (mode==='history') renderHistory();
+  if (mode==='backtest') renderBacktest();
+}
+
+function filterHist(f, el) {
+  histFilter=f;
+  document.querySelectorAll('.hist-filter').forEach(e=>e.classList.remove('active'));
   el.classList.add('active');
-  currentSport = sport;
-  currentStat  = '';
-  renderStatTabs();
-  document.getElementById('content').innerHTML = '';
-  document.getElementById('summary').style.display = 'none';
-  document.getElementById('status').textContent = '';
+  renderHistory();
+}
+<!-- ╔════════════════════════════════════════╗ -->
+<!-- ║  index.html — PARTIE 3/4              ║ -->
+<!-- ║  Colle à la suite de PARTIE 2         ║ -->
+<!-- ╚════════════════════════════════════════╝ -->
+function renderHistory() {
+  let bets = loadBets();
+
+  // KPIs
+  const resolved = bets.filter(b=>b.status!=='pending');
+  const won = bets.filter(b=>b.status==='won').length;
+  const lost = bets.filter(b=>b.status==='lost').length;
+  const pending = bets.filter(b=>b.status==='pending').length;
+  const hitRate = resolved.length ? (won/resolved.length*100).toFixed(1) : '--';
+  const stake = 10;
+  const profit = resolved.reduce((s,b)=>s+(b.status==='won'?stake*100/110:-stake),0);
+  const hrColor = parseFloat(hitRate)>=52.4?'kpi-green':'kpi-red';
+  const profColor = profit>=0?'kpi-green':'kpi-red';
+
+  document.getElementById('histSummary').innerHTML=`
+    <div class="hist-summary">
+      <div style="font-weight:700;margin-bottom:8px;color:#a78bfa">📋 Mon historique</div>
+      <div class="hist-kpis">
+        <div class="kpi-box"><div class="kpi-val ${hrColor}">${hitRate}%</div><div class="kpi-lbl">Hit Rate</div></div>
+        <div class="kpi-box"><div class="kpi-val ${profColor}">${profit>=0?'+':''}$${profit.toFixed(0)}</div><div class="kpi-lbl">Profit ($10/bet)</div></div>
+        <div class="kpi-box"><div class="kpi-val kpi-blue">${bets.length}</div><div class="kpi-lbl">Total bets</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;text-align:center">
+        <div style="background:#0f172a;border-radius:6px;padding:6px"><span style="color:#4ade80">✅ ${won}</span> gagnés</div>
+        <div style="background:#0f172a;border-radius:6px;padding:6px"><span style="color:#f87171">❌ ${lost}</span> perdus</div>
+        <div style="background:#0f172a;border-radius:6px;padding:6px"><span style="color:#fbbf24">⏳ ${pending}</span> en attente</div>
+      </div>
+      <div style="margin-top:8px;font-size:10px;color:#475569;text-align:center">Breakeven = 52.4% · Chaque bet simulé à $10 à -110 odds</div>
+    </div>`;
+
+  // Filter
+  if (histFilter==='pending') bets=bets.filter(b=>b.status==='pending');
+  else if (histFilter==='won') bets=bets.filter(b=>b.status==='won');
+  else if (histFilter==='lost') bets=bets.filter(b=>b.status==='lost');
+  else if (['mlb','nhl','tennis','golf'].includes(histFilter)) bets=bets.filter(b=>b.sport===histFilter);
+
+  if (!bets.length) {
+    document.getElementById('histContent').innerHTML=`<div class="empty"><div class="empty-icon">📋</div><p>Aucun bet dans cette catégorie</p><p style="font-size:11px;margin-top:6px">Les bets Grade A/B sont sauvegardés automatiquement lors du scan</p></div>`;
+    return;
+  }
+
+  const sportIcon={mlb:'⚾',nhl:'🏒',tennis:'🎾',golf:'⛳'};
+  const html=bets.map(b=>{
+    const isOver=b.recommendation==='OVER';
+    const rbClass=b.status==='won'?'rb-won':b.status==='lost'?'rb-lost':'rb-pending';
+    const rbText=b.status==='won'?`✅ Gagné (${b.actual_value} ${b.stat_label})`:b.status==='lost'?`❌ Perdu (${b.actual_value} ${b.stat_label})`:'⏳ En attente';
+    const gi=b.game_info||{};
+    const matchup=gi.away_team&&gi.home_team?`${gi.away_team} @ ${gi.home_team}`:'';
+    const pnl=b.status==='won'?`+$${(10*100/110).toFixed(2)}`:b.status==='lost'?'-$10.00':'--';
+    const pnlColor=b.status==='won'?'#4ade80':b.status==='lost'?'#f87171':'#fbbf24';
+    const gradeColor=b.grade==='A'?'#4ade80':b.grade==='B'?'#86efac':'#fbbf24';
+    return `<div class="bet-card ${b.status}" id="card_${b.id}">
+      <div class="bet-header">
+        <div>
+          <div class="bet-player">${sportIcon[b.sport]||'🎰'} ${b.player}</div>
+          <div class="bet-meta">${b.scan_date} · ${matchup||b.stat_type} · Grade <span style="color:${gradeColor}">${b.grade}</span></div>
+        </div>
+        <div class="bet-result-badge ${rbClass}" id="resolve_${b.id}">${rbText}</div>
+      </div>
+      <div class="bet-details">
+        <div><div class="bd-val" style="color:${isOver?'#4ade80':'#f87171'}">${b.recommendation}</div><div class="bd-lbl">Direction</div></div>
+        <div><div class="bd-val">${b.bookmaker_line} ${b.stat_label}</div><div class="bd-lbl">Ligne</div></div>
+        <div><div class="bd-val kpi-yellow">+${b.edge}%</div><div class="bd-lbl">Edge</div></div>
+        <div><div class="bd-val" style="color:${pnlColor}">${pnl}</div><div class="bd-lbl">P&L</div></div>
+      </div>
+      ${b.status==='pending'?`<button class="btn-resolve" onclick="resolveBet('${b.id}')">🔄 Vérifier le résultat maintenant</button>`:''}
+    </div>`;
+  }).join('');
+  document.getElementById('histContent').innerHTML=html;
 }
 
-function showSoon(sport) {
-  document.getElementById('status').textContent = `⏳ ${sport === 'golf' ? '⛳ Golf' : '🎾 Tennis'} en développement — arrivée prochainement.`;
+function renderBacktest() {
+  const bets = loadBets().filter(b=>b.status!=='pending');
+  if (bets.length < 5) {
+    document.getElementById('btContent').innerHTML=`<div class="empty"><div class="empty-icon">🔬</div><p>Pas assez de données</p><p style="font-size:11px;margin-top:6px">Il te faut au moins 5 bets résolus pour voir les stats de backtest. Continue à scanner et résoudre tes bets!</p></div>`;
+    return;
+  }
+  const won=bets.filter(b=>b.status==='won').length;
+  const hitRate=(won/bets.length*100).toFixed(1);
+  const profit=bets.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
+  const roi=(profit/(bets.length*10)*100).toFixed(1);
+
+  // By sport
+  const sports=[...new Set(bets.map(b=>b.sport))];
+  const sportRows=sports.map(sp=>{
+    const sb=bets.filter(b=>b.sport===sp);
+    const sw=sb.filter(b=>b.status==='won').length;
+    const shr=(sw/sb.length*100).toFixed(0);
+    const sp2=sb.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
+    return `<div class="dr"><span class="dl">${{mlb:'⚾',nhl:'🏒',tennis:'🎾',golf:'⛳'}[sp]||sp} (${sb.length} bets)</span><span class="dv" style="color:${parseFloat(shr)>=52?'#4ade80':'#f87171'}">${shr}% · ${sp2>=0?'+':''}$${sp2.toFixed(0)}</span></div>`;
+  }).join('');
+
+  // By grade
+  const grades=['A','B','C'];
+  const gradeRows=grades.map(g=>{
+    const gb=bets.filter(b=>b.grade===g);
+    if(!gb.length) return '';
+    const gw=gb.filter(b=>b.status==='won').length;
+    const ghr=(gw/gb.length*100).toFixed(0);
+    const gp=gb.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
+    return `<div class="dr"><span class="dl">Grade ${g} (${gb.length} bets)</span><span class="dv" style="color:${parseFloat(ghr)>=52?'#4ade80':'#f87171'}">${ghr}% · ${gp>=0?'+':''}$${gp.toFixed(0)}</span></div>`;
+  }).join('');
+
+  // Recent 10
+  const recent=bets.slice(0,10).map(b=>{
+    const won=b.status==='won';
+    return `<div class="dr">
+      <span class="dl">${b.player.split(' ').pop()} ${b.recommendation} ${b.bookmaker_line}</span>
+      <span style="color:#64748b;font-size:10px">${b.actual_value ?? '--'} réel</span>
+      <span style="color:${won?'#4ade80':'#f87171'}">${won?'✅':'❌'}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('btContent').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px">
+      <div class="kpi-box"><div class="kpi-val ${parseFloat(hitRate)>=52.4?'kpi-green':'kpi-red'}">${hitRate}%</div><div class="kpi-lbl">Hit Rate global</div></div>
+      <div class="kpi-box"><div class="kpi-val ${parseFloat(roi)>=0?'kpi-green':'kpi-red'}">${parseFloat(roi)>=0?'+':''}${roi}%</div><div class="kpi-lbl">ROI ($10/bet)</div></div>
+      <div class="kpi-box"><div class="kpi-val kpi-blue">${bets.length}</div><div class="kpi-lbl">Bets résolus</div></div>
+      <div class="kpi-box"><div class="kpi-val ${parseFloat(profit)>=0?'kpi-green':'kpi-red'}">${parseFloat(profit)>=0?'+':''}$${profit.toFixed(0)}</div><div class="kpi-lbl">Profit total</div></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Par sport</div>${sportRows}
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">Par grade</div>${gradeRows}
+    </div>
+    <div class="detail-section">
+      <div class="detail-title">10 derniers bets</div>${recent}
+    </div>
+    <div style="background:rgba(124,58,237,.1);border:1px solid #7c3aed;border-radius:8px;padding:10px;font-size:11px;color:#a78bfa;margin-top:8px">
+      💡 Ce backtest est basé sur tes <b>vrais bets réels</b> et résultats réels — pas une simulation. Plus tu utilises l'app, plus les stats seront précises.
+    </div>`;
 }
 
+function clearAll() {
+  if (confirm('Effacer tout l\'historique?')) { localStorage.removeItem(STORAGE_KEY); renderHistory(); }
+}
+
+function showToast(msg) {
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ── Scanner ──────────────────────────────────────────────────────────────────
+function setSport(sport,el) {
+  document.querySelectorAll('.sport-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); currentSport=sport; currentStat='';
+  renderStatTabs(); document.getElementById('scanContent').innerHTML='';
+  document.getElementById('summary').style.display='none';
+  document.getElementById('scanStatus').textContent='';
+}
 function renderStatTabs() {
-  const tabs = SPORT_CONFIG[currentSport]?.stats || [];
-  const el = document.getElementById('statTabs');
-  el.innerHTML = tabs.map(t =>
-    `<div class="stat-tab ${t.key === currentStat ? 'active' : ''}" onclick="setStat('${t.key}',this)">${t.label}</div>`
+  const tabs=SPORT_STATS_MAP[currentSport]||[];
+  document.getElementById('statTabs').innerHTML=tabs.map(t=>
+    `<div class="stat-tab ${t.key===currentStat?'active':''}" onclick="setStat('${t.key}',this)">${t.label}</div>`
   ).join('');
 }
-
-function setStat(stat, el) {
-  document.querySelectorAll('.stat-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  currentStat = stat;
+function setStat(stat,el) {
+  document.querySelectorAll('.stat-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active'); currentStat=stat;
 }
 
 async function scan() {
-  const btn = document.getElementById('btnScan');
-  const st  = document.getElementById('status');
-  const minEdge = document.getElementById('minEdge').value;
-  btn.disabled = true;
-  document.getElementById('errMsg').innerHTML = '';
-  document.getElementById('summary').style.display = 'none';
-  document.getElementById('content').innerHTML = '';
-  st.textContent = '⏳ Réveil serveur (30-60s)...';
+  const btn=document.getElementById('btnScan'),st=document.getElementById('scanStatus');
+  const minEdge=document.getElementById('minEdge').value;
+  btn.disabled=true;
+  document.getElementById('scanErr').innerHTML='';
+  document.getElementById('summary').style.display='none';
+  document.getElementById('scanContent').innerHTML='';
+  st.textContent='⏳ Réveil serveur (30-60s)...';
   try {
-    await fetch(API + '/api/health').catch(() => {});
-    const sp = currentStat ? `&stat_type=${currentStat}` : '';
-    st.textContent = `📊 Analyse ${currentSport.toUpperCase()} en cours...`;
-    const res = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEdge}${sp}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.status !== 'SUCCESS') throw new Error(data.message || 'Erreur');
-
-    if (data.message) {
-      st.textContent = '';
-      document.getElementById('content').innerHTML = `<div class="info-msg">${data.message}</div>`;
-      btn.disabled = false; return;
+    await fetch(API+'/api/health').catch(()=>{});
+    const sp=currentStat?`&stat_type=${currentStat}`:'';
+    st.textContent=`📊 Analyse ${currentSport.toUpperCase()} en cours...`;
+    const res=await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEdge}${sp}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data=await res.json();
+    if(data.status!=='SUCCESS') throw new Error(data.message||'Erreur');
+    if(data.message&&!data.opportunities?.length){
+      st.textContent=''; document.getElementById('scanContent').innerHTML=`<div class="info-msg">${data.message}</div>`; btn.disabled=false; return;
     }
-
-    const opps = data.opportunities || [];
-    st.textContent = `✅ ${opps.length} opp${opps.length!==1?'s':''} · ${data.players_analyzed} analysés · ${data.scan_time}`;
-    if (opps.length > 0) {
-      const avgEdge = (opps.reduce((s,o)=>s+o.line_analysis.edge,0)/opps.length).toFixed(1);
-      document.getElementById('sGames').textContent = data.total_games || '-';
-      document.getElementById('sAnalyzed').textContent = data.players_analyzed;
-      document.getElementById('sOpps').textContent = opps.length;
-      document.getElementById('sEdge').textContent = avgEdge + '%';
-      document.getElementById('summary').style.display = 'grid';
+    const opps=data.opportunities||[];
+    // AUTO-SAVE Grade A/B
+    autoSaveOpps(opps, currentSport);
+    st.textContent=`✅ ${opps.length} opp${opps.length!==1?'s':''} · ${data.players_analyzed} analysés · ${data.scan_time}`;
+    if(opps.length>0){
+      const avgEdge=(opps.reduce((s,o)=>s+o.line_analysis.edge,0)/opps.length).toFixed(1);
+      document.getElementById('sGames').textContent=data.total_games||'-';
+      document.getElementById('sAnalyzed').textContent=data.players_analyzed;
+      document.getElementById('sOpps').textContent=opps.length;
+      document.getElementById('sEdge').textContent=avgEdge+'%';
+      document.getElementById('summary').style.display='grid';
     }
     renderCards(opps);
-  } catch(e) {
-    st.textContent = '';
-    document.getElementById('errMsg').innerHTML = `<div class="err">❌ ${e.message}</div>`;
-  }
-  btn.disabled = false;
+  } catch(e){ st.textContent=''; document.getElementById('scanErr').innerHTML=`<div class="err">❌ ${e.message}</div>`; }
+  btn.disabled=false;
 }
 
+<!-- ╔════════════════════════════════════════╗ -->
+<!-- ║  index.html — PARTIE 4/4              ║ -->
+<!-- ║  Colle à la suite de PARTIE 3         ║ -->
+<!-- ╚════════════════════════════════════════╝ -->
 function renderCards(opps) {
-  const c = document.getElementById('content');
-  if (!opps.length) {
-    c.innerHTML = `<div class="empty"><div class="empty-icon">${{mlb:'⚾',nhl:'🏒',golf:'⛳',tennis:'🎾'}[currentSport]||'🎰'}</div><p>Aucune opportunité</p><p style="font-size:11px;margin-top:6px">Baisse l'edge minimum ou reviens plus tard</p></div>`;
-    return;
-  }
-  const ga = opps.filter(o=>o.quality.grade==='A');
-  const gb = opps.filter(o=>o.quality.grade==='B');
-  const gc = opps.filter(o=>o.quality.grade==='C');
-  let html = '';
-  if (ga.length) html += `<div class="section-title">🟢 Grade A — Bets solides (${ga.length})</div>` + ga.map((o,i)=>card(o,i)).join('');
-  if (gb.length) html += `<div class="section-title">🟢 Grade B — Bets acceptables (${gb.length})</div>` + gb.map((o,i)=>card(o,i+ga.length)).join('');
-  if (gc.length) html += `<div class="section-title">🟡 Grade C — Prudence (${gc.length})</div>` + gc.map((o,i)=>card(o,i+ga.length+gb.length)).join('');
-  c.innerHTML = html;
+  const c=document.getElementById('scanContent');
+  if(!opps.length){ c.innerHTML=`<div class="empty"><div class="empty-icon">${{mlb:'⚾',nhl:'🏒',tennis:'🎾',golf:'⛳'}[currentSport]||'🎰'}</div><p>Aucune opportunité</p></div>`; return; }
+  const ga=opps.filter(o=>o.quality.grade==='A'),gb=opps.filter(o=>o.quality.grade==='B'),gc=opps.filter(o=>o.quality.grade==='C');
+  let html='';
+  if(ga.length) html+=`<div class="section-title">🟢 Grade A — sauvegardés auto (${ga.length})</div>`+ga.map((o,i)=>card(o,i)).join('');
+  if(gb.length) html+=`<div class="section-title">🟢 Grade B — sauvegardés auto (${gb.length})</div>`+gb.map((o,i)=>card(o,i+ga.length)).join('');
+  if(gc.length) html+=`<div class="section-title">🟡 Grade C — non sauvegardés (${gc.length})</div>`+gc.map((o,i)=>card(o,i+ga.length+gb.length)).join('');
+  c.innerHTML=html;
 }
 
-function gradeClass(g) { return {A:'qb-a',B:'qb-b',C:'qb-c'}[g]||'qb-c'; }
-
-function card(o, i) {
-  const la=o.line_analysis, ds=o.deep_stats, sv=o.statistical_validation;
-  const norm=sv.normality||{}, gof=sv.chi_gof, q=o.quality;
-  const isOver=la.recommendation==='OVER';
-  const prob=isOver?la.over_probability:la.under_probability;
-  const games=o.recent_games||[];
-  const maxV=Math.max(...games.map(g=>g.stat),la.bookmaker_line+2,1);
-  const linePos=(la.bookmaker_line/maxV)*100;
-
-  const bars=games.slice(0,10).reverse().map(g=>{
-    const h=Math.max(5,(g.stat/maxV)*100), cls=g.stat>la.bookmaker_line?'kb-over':'kb-under';
-    return `<div class="k-bar ${cls}" style="height:${h}%;position:relative"><div class="k-line" style="bottom:${linePos}%"></div></div>`;
-  }).join('');
-
-  const cells=games.slice(0,10).map(g=>{
-    const cls=g.stat>la.bookmaker_line?'over':'under';
-    return `<div class="sc-cell ${cls}"><div class="sk">${g.stat}</div><div style="color:#475569;font-size:8px">${g.date?g.date.slice(5):''}</div></div>`;
-  }).join('');
-
-  const gi=o.game_info||{};
-  const matchup=gi.home_team&&gi.away_team?`${gi.away_team} @ ${gi.home_team}`:'';
-  const histOver=ds.games_analyzed>0?Math.round(ds.over_count/ds.games_analyzed*100):0;
+function card(o,i){
+  const la=o.line_analysis,ds=o.deep_stats,sv=o.statistical_validation,norm=sv.normality||{},gof=sv.chi_gof,q=o.quality;
+  const isOver=la.recommendation==='OVER',prob=isOver?la.over_probability:la.under_probability;
+  const games=o.recent_games||[],maxV=Math.max(...games.map(g=>g.stat),la.bookmaker_line+2,1),linePos=(la.bookmaker_line/maxV)*100;
+  const bars=games.slice(0,10).reverse().map(g=>`<div class="k-bar ${g.stat>la.bookmaker_line?'kb-over':'kb-under'}" style="height:${Math.max(5,(g.stat/maxV)*100)}%;position:relative"><div class="k-line" style="bottom:${linePos}%"></div></div>`).join('');
+  const cells=games.slice(0,10).map(g=>`<div class="sc-cell ${g.stat>la.bookmaker_line?'over':'under'}"><div class="sk">${g.stat}</div><div style="color:#475569;font-size:8px">${g.date?g.date.slice(5):''}</div></div>`).join('');
+  const gi=o.game_info||{},matchup=gi.home_team&&gi.away_team?`${gi.away_team} @ ${gi.home_team}`:'';
   const trend=ds.trend_slope>0.1?'📈':ds.trend_slope<-0.1?'📉':'➡️';
-
-  const sw=norm.shapiro_wilk, ks=norm.ks_test;
+  const sw=norm.shapiro_wilk,ks=norm.ks_test;
   const swC=sw?`<span class="val-chip ${sw.is_normal?'val-ok':'val-bad'}">SW ${sw.is_normal?'✅':'❌'} p=${sw.p_value}</span>`:'';
   const ksC=ks?`<span class="val-chip ${ks.is_normal?'val-ok':'val-bad'}">KS ${ks.is_normal?'✅':'❌'} p=${ks.p_value}</span>`:'';
   const gofC=gof?`<span class="val-chip ${gof.is_good_fit?'val-ok':'val-warn'}">χ² ${gof.is_good_fit?'✅':'⚠️'} p=${gof.p_value}</span>`:'';
-
-  const sportIcon={mlb:'⚾',nhl:'🏒',golf:'⛳',tennis:'🎾'}[o.sport]||'🎰';
-  const prosH=(q.pros||[]).map(p=>`<li>${p}</li>`).join('');
-  const issH=(q.issues||[]).map(p=>`<li>${p}</li>`).join('');
-
+  const icon={mlb:'⚾',nhl:'🏒',tennis:'🎾',golf:'⛳'}[o.sport]||'🎰';
+  const gcls={A:'qb-a',B:'qb-b',C:'qb-c'}[q.grade]||'qb-c';
+  const autoTag=['A','B'].includes(q.grade)?`<span style="background:rgba(22,163,74,.15);color:#4ade80;border-radius:4px;padding:1px 5px;font-size:9px">💾 auto-sauvé</span>`:'';
   return `<div class="card">
-    <div class="quality-banner ${gradeClass(q.grade)}">
-      <div class="qb-grade" style="color:${q.color}">Grade ${q.grade} — ${q.label}</div>
-      <ul class="qb-pros">${prosH}</ul>
-      ${issH?`<ul class="qb-issues">${issH}</ul>`:''}
+    <div class="quality-banner ${gcls}">
+      <div class="qb-grade" style="color:${q.color}">Grade ${q.grade} — ${q.label} ${autoTag}</div>
+      <ul class="qb-pros">${(q.pros||[]).map(p=>`<li>${p}</li>`).join('')}</ul>
+      ${(q.issues||[]).length?`<ul class="qb-issues">${q.issues.map(p=>`<li>${p}</li>`).join('')}</ul>`:''}
     </div>
     <div class="card-top">
-      <div>
-        <div class="pname">${sportIcon} ${o.player}</div>
-        <div class="ptags">
-          <span class="chip chip-edge">+${la.edge.toFixed(1)}%</span>
-          <span class="chip chip-stat">${o.stat_label}</span>
-        </div>
+      <div><div class="pname">${icon} ${o.player}</div>
+        <div class="ptags"><span class="chip chip-edge">+${la.edge.toFixed(1)}%</span><span class="chip chip-stat">${o.stat_label}</span></div>
         <div class="matchup-txt">${matchup} · Line: <strong>${la.bookmaker_line}</strong> ${o.stat_label}</div>
       </div>
       <div class="rec-badge ${isOver?'badge-over':'badge-under'}">${la.recommendation}<br><span style="font-size:10px">${prob.toFixed(0)}%</span></div>
@@ -347,12 +611,11 @@ function card(o, i) {
       <div class="detail-section">
         <div class="detail-title">Statistiques</div>
         <div class="dr"><span class="dl">Matchs analysés</span><span class="dv">${ds.games_analyzed}</span></div>
-        <div class="dr"><span class="dl">OVER historique</span><span class="dv">${ds.over_count}/${ds.games_analyzed} (${histOver}%)</span></div>
+        <div class="dr"><span class="dl">OVER historique</span><span class="dv">${ds.over_count}/${ds.games_analyzed}</span></div>
         <div class="dr"><span class="dl">Moy 10 derniers</span><span class="dv">${ds.avg_last_10} ${o.stat_label}</span></div>
         <div class="dr"><span class="dl">Consistance</span><span class="dv" style="color:${ds.consistency>=60?'#4ade80':'#fbbf24'}">${ds.consistency}%</span></div>
         <div class="dr"><span class="dl">R²</span><span class="dv">${ds.r_squared?.toFixed(3)??'N/A'}</span></div>
         <div class="dr"><span class="dl">Tendance</span><span class="dv">${trend} ${ds.trend_slope>0?'+':''}${ds.trend_slope}</span></div>
-        <div class="dr"><span class="dl">Source</span><span class="dv">${la.bookmaker}</span></div>
       </div>
       <div class="detail-section">
         <div class="detail-title">Validation statistique</div>
@@ -365,14 +628,11 @@ function card(o, i) {
   </div>`;
 }
 
-function toggle(i, btn) {
-  const d = document.getElementById('d'+i);
-  const open = d.style.display !== 'none';
-  d.style.display = open ? 'none' : 'block';
-  btn.textContent = open ? '▼ Détails + Historique' : '▲ Fermer';
+function toggle(i,btn){
+  const d=document.getElementById('d'+i),open=d.style.display!=='none';
+  d.style.display=open?'none':'block'; btn.textContent=open?'▼ Détails + Historique':'▲ Fermer';
 }
 
-// Init
 renderStatTabs();
 </script>
 </body>
