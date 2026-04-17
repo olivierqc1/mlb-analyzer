@@ -224,6 +224,7 @@ def backtest(games, stat_type, min_train=10, stake=10.0):
         'grade_ab_profit': round(sum(r['pnl'] for r in ab),2),
         'per_bet': results[-20:]
     }
+
 # ╔══════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3                ║
 # ║  Colle à la suite de PARTIE 1       ║
@@ -513,6 +514,7 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
     opps.sort(key=lambda x: ({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3), -x['line_analysis']['edge']))
     return opps, analyzed, n_games
+
 
 # ╔══════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3                ║
