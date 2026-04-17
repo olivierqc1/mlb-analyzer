@@ -225,6 +225,7 @@ def backtest(games, stat_type, min_train=10, stake=10.0):
         'per_bet': results[-20:]
     }
 
+
 # ╔══════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3                ║
 # ║  Colle à la suite de PARTIE 1       ║
@@ -257,7 +258,7 @@ def mlb_get_gamelog(player_id, stat_type):
     data = safe_req(f"{MLB_BASE}/people/{player_id}/stats",
         params={'stats':'gameLog','season':2025,'group':cfg['group'],'gameType':'R'})
     if not data: return None
-    splits = (data.get('stats') or [{}])[0].get('splits',[])
+    splits = data.get('stats',[{}])[0].get('splits',[])
     if not splits: return None
     games = []
     for s in splits:
@@ -294,7 +295,7 @@ def mlb_opp_k_pct(team):
     if not tid: return None
     d = safe_req(f"{MLB_BASE}/teams/{tid}/stats", params={'stats':'season','group':'hitting','season':2025,'gameType':'R'})
     if not d: return None
-    sp = (d.get('stats') or [{}])[0].get('splits',[])
+    sp = d.get('stats',[{}])[0].get('splits',[{}])
     if not sp: return None
     st = sp[0].get('stat',{})
     k=int(st.get('strikeOuts',0) or 0); ab=int(st.get('atBats',1) or 1)
