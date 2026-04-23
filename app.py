@@ -1,9 +1,9 @@
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 1/2   (colle en premier)           ║
-# ║  FIXES: saison 2026, gamelog multi-saison, NHL      ║
+# ║  v2.2: NHL→shots on goal, tennis fix, TB back       ║
 # ╚══════════════════════════════════════════════════════╝
 #!/usr/bin/env python3
-"""Multi-Sport Betting Analyzer v2.1 — MLB(K,TB)|NHL|Tennis|Golf"""
+"""Multi-Sport Betting Analyzer v2.2"""
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, numpy as np, os, math, time, re, io, csv
@@ -23,7 +23,7 @@ NHL_SEARCH_BASE = "https://search.d3.nhle.com/api/v1/search"
 SACKMANN_BASE   = "https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master"
 DATAGOLF_BASE   = "https://feeds.datagolf.com"
 LEAGUE_AVG_K_PCT = 0.225
-CURRENT_MLB_SEASON = 2026  # ← FIX: était 2025
+CURRENT_MLB_SEASON = 2026
 
 GAMELOG_CACHE = {}; SCHEDULE_CACHE = {}
 PLAYER_ID_CACHE = {}; TEAM_STATS_CACHE = {}; TENNIS_CACHE = {}
@@ -31,13 +31,14 @@ PLAYER_ID_CACHE = {}; TEAM_STATS_CACHE = {}; TENNIS_CACHE = {}
 STAT_CONFIG = {
     'pitcher_strikeouts': {'sport':'mlb','group':'pitching','col':'strikeOuts','label':'K','min_ip':3.0,'bettable':True,'min_games':5,'odds_sport':'baseball_mlb','odds_market':'pitcher_strikeouts'},
     'batter_total_bases': {'sport':'mlb','group':'hitting','col':'totalBases','label':'TB','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'baseball_mlb','odds_market':'batter_total_bases'},
-    'goalie_saves':       {'sport':'nhl','group':'goalie','col':'saves','label':'SV','min_ip':None,'bettable':True,'min_games':5,'odds_sport':'icehockey_nhl','odds_market':'player_saves','odds_sport_alt':'icehockey_nhl_championship'},
+    # NHL: shots on goal (skaters) — bien meilleur que saves pour la normalité
+    'skater_shots':       {'sport':'nhl','group':'skater','col':'shots','label':'SOG','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'icehockey_nhl','odds_market':'player_shots_on_goal'},
     'tennis_aces':        {'sport':'tennis','group':'tennis','col':'aces','label':'ACE','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'tennis_atp','odds_market':'player_aces'},
     'golf_scoring':       {'sport':'golf','group':'golf','col':'sg_total','label':'SG','min_ip':None,'bettable':True,'min_games':6,'odds_sport':'golf_pga','odds_market':'golfer_top_20_finish'},
 }
 SPORT_STATS = {
-    'mlb':    ['pitcher_strikeouts'],
-    'nhl':    ['goalie_saves'],
+    'mlb':    ['pitcher_strikeouts', 'batter_total_bases'],  # TB back avec filtre cmean>1.5
+    'nhl':    ['skater_shots'],
     'tennis': ['tennis_aces'],
     'golf':   ['golf_scoring'],
 }
@@ -60,7 +61,12 @@ def names_match(a, b):
     if na == nb: return True
     pa, pb = na.split(), nb.split()
     if not pa or not pb: return False
-    return pa[-1] == pb[-1] and pa[0][0] == pb[0][0]
+    # Last name + first initial
+    if pa[-1] == pb[-1] and pa[0][0] == pb[0][0]: return True
+    # Aussi tester prénom-nom inversé (Sackmann parfois inverse)
+    if len(pa) >= 2 and len(pb) >= 2:
+        if pa[0] == pb[-1] and pa[-1] == pb[0]: return True
+    return False
 
 def safe_req(url, params=None, timeout=12):
     try:
@@ -97,51 +103,49 @@ def chi_gof(vals, line):
     try:
         mu, sigma = float(np.mean(vals)), float(np.std(vals))
         if sigma <= 0: return None
-        oo = int(np.sum(vals > line)); uo = int(n - oo)
-        po = float(1 - scipy_stats.norm.cdf(line, mu, sigma))
-        oe, ue = po*n, (1-po)*n
-        if oe < 1 or ue < 1: return None
-        chi2, p = scipy_stats.chisquare([oo,uo], f_exp=[oe,ue])
-        good = float(p) > 0.05
+        oo=int(np.sum(vals>line)); uo=int(n-oo)
+        po=float(1-scipy_stats.norm.cdf(line,mu,sigma))
+        oe,ue=po*n,(1-po)*n
+        if oe<1 or ue<1: return None
+        chi2,p=scipy_stats.chisquare([oo,uo],f_exp=[oe,ue])
+        good=float(p)>0.05
         return {'chi2':round(float(chi2),4),'p_value':round(float(p),4),
                 'is_good_fit':good,'label':'✅ Bon fit' if good else '⚠️ Fit imparfait',
                 'observed':[oo,uo],'expected':[round(oe,1),round(ue,1)]}
     except: return None
 
-def bet_quality(a):
+def bet_quality(a, stat_type=''):
     score=0; issues=[]; pros=[]
+    # TB spécifique: élimine les joueurs de banc
+    if stat_type=='batter_total_bases' and a['cmean']<1.5:
+        return {'grade':'AVOID','color':'#f87171','label':'🔴 ÉVITER — TB moyen trop bas (joueur de banc)','score':0,'pros':[],'issues':['❌ Moyenne TB < 1.5 — distribution Bernoulli inexploitable']}
     if a['n']>=15:   score+=2; pros.append(f"✅ {a['n']} matchs analysés (solide)")
     elif a['n']>=8:  score+=1; pros.append(f"🟡 {a['n']} matchs (acceptable)")
-    else: issues.append(f"❌ Seulement {a['n']} matchs — données insuffisantes")
-    if a['cons']>=70:  score+=2; pros.append(f"✅ Consistance {a['cons']}% (très stable)")
+    else: issues.append(f"❌ Seulement {a['n']} matchs")
+    if a['cons']>=70:  score+=2; pros.append(f"✅ Consistance {a['cons']}%")
     elif a['cons']>=50: score+=1; pros.append(f"🟡 Consistance {a['cons']}%")
     else: issues.append(f"❌ Consistance {a['cons']}% — imprévisible")
-    v = a['normality']['verdict']
+    v=a['normality']['verdict']
     if v=='NORMAL':     score+=2; pros.append("✅ Distribution normale confirmée")
     elif v=='BORDERLINE': score+=1; pros.append("🟡 Distribution approximativement normale")
     else: issues.append("❌ Distribution non-normale")
-    gof = a.get('chi_gof')
+    gof=a.get('chi_gof')
     if gof and gof['is_good_fit']:    score+=1; pros.append("✅ Chi² GOF cohérent")
     elif gof and not gof['is_good_fit']: issues.append("⚠️ Chi² incohérent")
     margin=abs(a['adj_mean']-a['line']); sigma=a['cstd'] if a['cstd']>0 else 1; z=margin/sigma
-    if z>=1.5:  score+=2; pros.append(f"✅ Marge {margin:.1f} = {z:.1f}σ (signal fort)")
+    if z>=1.5:  score+=2; pros.append(f"✅ Marge {margin:.1f} = {z:.1f}σ")
     elif z>=0.8: score+=1; pros.append(f"🟡 Marge {margin:.1f} = {z:.1f}σ")
     else: issues.append(f"❌ Marge trop faible ({margin:.1f})")
-    if a['rec']=='OVER' and a['l5']>a['line']:   score+=1; pros.append(f"✅ L5 ({a['l5']}) confirme OVER ({a['line']})")
-    elif a['rec']=='UNDER' and a['l5']<a['line']: score+=1; pros.append(f"✅ L5 ({a['l5']}) confirme UNDER ({a['line']})")
+    if a['rec']=='OVER' and a['l5']>a['line']:   score+=1; pros.append(f"✅ L5 ({a['l5']}) confirme OVER")
+    elif a['rec']=='UNDER' and a['l5']<a['line']: score+=1; pros.append(f"✅ L5 ({a['l5']}) confirme UNDER")
     elif a['rec']=='OVER':  issues.append(f"⚠️ L5 ({a['l5']}) contredit le OVER")
     elif a['rec']=='UNDER': issues.append(f"⚠️ L5 ({a['l5']}) contredit le UNDER")
-    min_ok = z>=0.5 and margin>=0.7
-    if not min_ok:
-        grade,color,label = 'AVOID','#f87171','🔴 ÉVITER — Marge insuffisante'
-    elif score>=8 and not issues and z>=1.5:
-        grade,color,label = 'A','#4ade80','🟢 BET — Signal solide'
-    elif score>=6 and len(issues)<=1:
-        grade,color,label = 'B','#86efac','🟢 BET — Signal acceptable'
-    elif score>=4:
-        grade,color,label = 'C','#fbbf24','🟡 PRUDENCE — Signal faible'
-    else:
-        grade,color,label = 'AVOID','#f87171','🔴 ÉVITER'
+    min_ok=z>=0.5 and margin>=0.7
+    if not min_ok:   grade,color,label='AVOID','#f87171','🔴 ÉVITER — Marge insuffisante'
+    elif score>=8 and not issues and z>=1.5: grade,color,label='A','#4ade80','🟢 BET — Signal solide'
+    elif score>=6 and len(issues)<=1:        grade,color,label='B','#86efac','🟢 BET — Signal acceptable'
+    elif score>=4:                           grade,color,label='C','#fbbf24','🟡 PRUDENCE — Signal faible'
+    else:                                    grade,color,label='AVOID','#f87171','🔴 ÉVITER'
     return {'grade':grade,'color':color,'label':label,'score':score,'pros':pros,'issues':issues}
 
 def analyze(games, line, stat_type, adj_mean_override=None):
@@ -185,7 +189,7 @@ def analyze(games, line, stat_type, adj_mean_override=None):
        'raw_edge':round(raw_edge,1),'edge':round(adj_edge,1),'rec':rec,
        'r_sq':r_sq,'slope':slope,'kelly':round(kelly,1),'cons':cons,
        'normality':norm_res,'chi_gof':gof,'line':line,'recent':recent}
-    a['quality']=bet_quality(a); return a
+    a['quality']=bet_quality(a, stat_type); return a
 
 def backtest(games, stat_type, min_train=10, stake=10.0):
     if len(games)<min_train+3: return None
@@ -239,7 +243,6 @@ def mlb_get_pitchers():
     SCHEDULE_CACHE[key]=pitchers; return pitchers
 
 def mlb_get_gamelog(player_id, stat_type):
-    """FIX v2.1: fetch 2026 + 2025, merge, déduplique par date"""
     cfg=STAT_CONFIG[stat_type]; ck=f"mlb_{player_id}_{stat_type}"
     if ck in GAMELOG_CACHE: return GAMELOG_CACHE[ck]
     games=[]
@@ -260,7 +263,6 @@ def mlb_get_gamelog(player_id, stat_type):
                 except: entry['ip']=0.0
             games.append(entry)
     games.sort(key=lambda x:x['date'],reverse=True)
-    # Déduplique par date (au cas où une date apparaît dans les deux saisons)
     seen=set(); uniq=[]
     for g in games:
         d=g['date'][:10]
@@ -296,7 +298,7 @@ def mlb_opp_k_pct(team):
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
 
-# ── NHL ──────────────────────────────────────────────────────────────────────
+# ── NHL — Shots on Goal (skaters) ───────────────────────────────────────────
 def nhl_search_player(name):
     key='nhl_'+norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
@@ -309,20 +311,25 @@ def nhl_search_player(name):
                 if pid: PLAYER_ID_CACHE[key]=pid; return pid
     return None
 
-def nhl_get_saves(player_id):
-    ck=f"nhl_{player_id}_saves"
+def nhl_get_skater_gamelog(player_id):
+    """Shots on goal pour skaters — playoffs 2026 + saison régulière 2025-26 + 2024-25"""
+    ck=f"nhl_{player_id}_sog"
     if ck in GAMELOG_CACHE: return GAMELOG_CACHE[ck]
     games=[]
-    for gt in [3,2]:
-        data=safe_req(f"{NHL_BASE}/player/{player_id}/game-log/20252026/{gt}")
+    for season,gt in [('20252026',3),('20252026',2),('20242025',2)]:
+        data=safe_req(f"{NHL_BASE}/player/{player_id}/game-log/{season}/{gt}")
         if not data: continue
         for g in data.get('gameLog',[]):
-            sv=g.get('saves')
-            if sv is None: continue
-            games.append({'date':g.get('gameDate',''),'stat':int(sv),'shots_against':g.get('shotsAgainst',0)})
+            shots=g.get('shots') or g.get('shotsOnGoal')
+            if shots is None: continue
+            games.append({'date':g.get('gameDate',''),'stat':int(shots)})
     games.sort(key=lambda x:x['date'],reverse=True)
-    if games: GAMELOG_CACHE[ck]=games
-    return games or None
+    seen=set(); uniq=[]
+    for g in games:
+        d=g['date'][:10]
+        if d not in seen: seen.add(d); uniq.append(g)
+    if uniq: GAMELOG_CACHE[ck]=uniq
+    return uniq or None
 
 # ── Tennis ──────────────────────────────────────────────────────────────────
 def tennis_get_aces(player_name, surface=None):
@@ -330,7 +337,8 @@ def tennis_get_aces(player_name, surface=None):
     cache_key=f"tennis_{norm}_{surface or 'all'}"
     if cache_key in TENNIS_CACHE: return TENNIS_CACHE[cache_key]
     games=[]
-    for year in [2025,2024]:
+    # 2026 d'abord (peut exister), puis 2025, 2024
+    for year in [2026,2025,2024]:
         url=f"{SACKMANN_BASE}/atp_matches_{year}.csv"
         try:
             resp=requests.get(url,timeout=15)
@@ -341,6 +349,7 @@ def tennis_get_aces(player_name, surface=None):
                 if surface and surf.lower()!=surface.lower(): continue
                 for role,ace_col in [('winner_name','w_ace'),('loser_name','l_ace')]:
                     pname=row.get(role,'')
+                    if not pname: continue
                     if names_match(player_name,pname):
                         val=row.get(ace_col,'').strip()
                         if val:
@@ -367,6 +376,7 @@ def golf_get_stats(player_name):
                 games.append({'date':datetime.now().strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
     if games: GAMELOG_CACHE[ck]=games
     return games or None
+
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/2   (colle à la suite de P1)     ║
 # ╚══════════════════════════════════════════════════════╝
@@ -397,20 +407,13 @@ def get_odds_props(odds_sport, odds_market, max_games=15):
     return props,ev
 
 def nhl_get_odds():
-    """
-    FIX v2.1: essaie 3 sport keys + 2 market names pour couvrir saison/playoffs.
-    Retourne (props, ev) dès qu'on trouve des résultats.
-    """
-    sport_keys = ['icehockey_nhl','icehockey_nhl_championship','icehockey_nhl_playoffs']
-    market_keys = ['player_saves','goalie_saves']
-    for sk in sport_keys:
-        for mk in market_keys:
-            print(f"NHL odds: trying {sk} / {mk}")
-            props,ev = get_odds_props(sk, mk)
-            if props:
-                print(f"NHL odds: found {len(props)} props on {sk}/{mk}")
-                return props,ev,sk,mk
-    return {},{},None,None
+    """Essaie plusieurs sport keys pour player_shots_on_goal"""
+    for sk in ['icehockey_nhl','icehockey_nhl_championship']:
+        props,ev=get_odds_props(sk,'player_shots_on_goal')
+        if props:
+            print(f"NHL SOG: {len(props)} joueurs sur {sk}")
+            return props,ev
+    return {},{}
 
 def _build_opp(player, stat_type, sport, line, best, gi, opponent, is_home, a):
     cfg=STAT_CONFIG[stat_type]
@@ -467,12 +470,10 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
     elif sport=='nhl':
         n_games=10
-        props,ev,used_sport,used_market=nhl_get_odds()
+        props,ev=nhl_get_odds()
         if not props:
-            # Retourne message clair si aucun marché trouvé
-            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché player_saves trouvé sur The Odds API (tous les sport keys testés: nhl, nhl_championship, nhl_playoffs). Le marché saves est peut-être indisponible pour les séries actuelles.'}],0,0
-        print(f"NHL scan: {len(props)} goalies trouvés")
-        cfg=STAT_CONFIG['goalie_saves']
+            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché player_shots_on_goal trouvé. Le marché SOG est peut-être indisponible actuellement.'}],0,0
+        cfg=STAT_CONFIG['skater_shots']
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
             if not overs: continue
@@ -480,18 +481,23 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
             best=min(overs,key=lambda x:abs(x['line']-line))
             pid=nhl_search_player(pname)
             if not pid: continue
-            games=nhl_get_saves(pid)
+            games=nhl_get_skater_gamelog(pid)
             if not games or len(games)<cfg['min_games']: continue
             analyzed+=1
-            a=analyze(games,line,'goalie_saves')
+            a=analyze(games,line,'skater_shots')
             if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
-            opps.append(_build_opp(pname,'goalie_saves','nhl',line,best,gi,'',True,a))
+            opps.append(_build_opp(pname,'skater_shots','nhl',line,best,gi,'',True,a))
 
     elif sport=='tennis':
         cfg=STAT_CONFIG['tennis_aces']
-        props,ev=get_odds_props(cfg['odds_sport'],cfg['odds_market'])
+        # Essaie les deux sport keys possibles
+        props,ev=get_odds_props('tennis_atp','player_aces')
+        if not props:
+            props,ev=get_odds_props('tennis_atp_french_open','player_aces')
         n_games=len(props)
+        if not props:
+            return [{'_no_key':True,'message':'🎾 Tennis: Aucun marché player_aces trouvé sur The Odds API en ce moment. Aucun tournoi ATP avec ce marché n\'est actif.'}],0,0
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
             if not overs: continue
@@ -507,7 +513,7 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
     elif sport=='golf':
         if not DATAGOLF_KEY:
-            return [{'_no_key':True,'message':'⛳ Golf nécessite DATAGOLF_KEY. Inscris-toi sur datagolf.com (gratuit) et ajoute la clé dans Render > Environment Variables.'}],0,0
+            return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant. Inscris-toi sur datagolf.com et ajoute la clé dans Render > Environment Variables.'}],0,0
         cfg=STAT_CONFIG['golf_scoring']
         props,ev=get_odds_props(cfg['odds_sport'],cfg['odds_market'])
         n_games=len(props)
@@ -540,7 +546,7 @@ def daily_opportunities():
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
             return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
                 'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
-        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.1',
+        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.2',
             'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
             'total_games':n_games,'players_analyzed':analyzed,
             'opportunities_found':len(opps),'opportunities':opps,
@@ -553,10 +559,8 @@ def daily_opportunities():
 @app.route('/api/actual-result', methods=['GET'])
 def actual_result():
     try:
-        player_name=request.args.get('player','')
-        stat_type=request.args.get('stat_type','')
-        sport=request.args.get('sport','mlb')
-        date_str=request.args.get('date','')
+        player_name=request.args.get('player',''); stat_type=request.args.get('stat_type','')
+        sport=request.args.get('sport','mlb'); date_str=request.args.get('date','')
         if not player_name or not stat_type:
             return jsonify({'status':'ERROR','message':'player et stat_type requis'}),400
         games=None
@@ -572,11 +576,11 @@ def actual_result():
                     pid=mlb_search_player(player_name)
                     if pid: games=mlb_get_gamelog(pid,stat_type)
             else:
-                pid=mlb_search_player(player_name)
+                pid=mlb_search_player(player_name); 
                 if pid: games=mlb_get_gamelog(pid,stat_type)
         elif sport=='nhl':
             pid=nhl_search_player(player_name)
-            if pid: games=nhl_get_saves(pid)
+            if pid: games=nhl_get_skater_gamelog(pid)
         elif sport=='tennis':
             games=tennis_get_aces(player_name)
         if not games:
@@ -623,7 +627,7 @@ def run_backtest():
                 if pid: games=mlb_get_gamelog(pid,stat_type)
         elif sport=='nhl':
             pid=nhl_search_player(player_name)
-            if pid: games=nhl_get_saves(pid)
+            if pid: games=nhl_get_skater_gamelog(pid)
         elif sport=='tennis':
             games=tennis_get_aces(player_name)
         if not games: return jsonify({'status':'ERROR','message':f'Aucune donnée pour {player_name}'}),404
@@ -651,17 +655,16 @@ def usage():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'2.1',
-        'sports':list(SPORT_STATS.keys()),'mlb_season':CURRENT_MLB_SEASON,
-        'fixes':['gamelog multi-saison 2026+2025','nhl 3 sport keys + 2 market keys'],
+    return jsonify({'status':'healthy','version':'2.2','mlb_season':CURRENT_MLB_SEASON,
+        'sports':list(SPORT_STATS.keys()),
+        'changes':['NHL saves→shots on goal','Tennis fix 2026+message clair','TB back cmean>1.5'],
         'datagolf_key_set':bool(DATAGOLF_KEY)})
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'2.1',
-                    'sports':['mlb','nhl','tennis','golf']})
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.2'})
 
 if __name__ == '__main__':
     port=int(os.environ.get('PORT',5000))
-    print("🎰 Multi-Sport Analyzer v2.1 — MLB(2026)|NHL(multi-key)|Tennis|Golf")
+    print("🎰 Multi-Sport Analyzer v2.2 — MLB(K+TB)|NHL(SOG)|Tennis|Golf")
     app.run(host='0.0.0.0',port=port,debug=False)
