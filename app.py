@@ -302,6 +302,7 @@ def mlb_opp_k_pct(team):
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
 
+
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
 # ║  v2.6: NBA → direct Odds API (plan $30 supporte)   ║
@@ -551,7 +552,7 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
-# ║  v2.5: endpoint /api/debug-dk ajouté               ║
+# ║  v2.6: debug-nba endpoint + fix NameError           ║
 # ╚══════════════════════════════════════════════════════╝
 
 def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
@@ -559,7 +560,6 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
     if not stat_types: return [],0,0
     opps=[]; analyzed=0; n_games=0
 
-    # ── MLB ───────────────────────────────────────────────────────────────────
     if sport=='mlb':
         pitchers=mlb_get_pitchers(); n_games=len(set(p['home_team'] for p in pitchers))
         for st in stat_types:
@@ -589,7 +589,6 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
                 if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
                 opps.append(_build_opp(pname,st,'mlb',line,best,ev.get(pd['game_id'],gi),opp,ih,a))
 
-    # ── NBA ───────────────────────────────────────────────────────────────────
     elif sport=='nba':
         nba_stat_map={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}
         all_player_ids={}; n_games=0
@@ -616,9 +615,8 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
                 gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
                 opps.append(_build_opp(pname,st,'nba',line,best,gi,'',True,a))
         if not n_games:
-            return [{'_no_key':True,'message':'🏀 NBA: Aucun marché player props trouvé sur DraftKings. Vérifie /api/debug-dk pour diagnostiquer.'}],0,0
+            return [{'_no_key':True,'message':'🏀 NBA: Aucun marché trouvé. Vérifie /api/debug-nba.'}],0,0
 
-    # ── NHL ───────────────────────────────────────────────────────────────────
     elif sport=='nhl':
         n_games=10; props,ev=nhl_get_odds()
         if not props:
@@ -639,7 +637,6 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'skater_shots','nhl',line,best,gi,'',True,a))
 
-    # ── Tennis ────────────────────────────────────────────────────────────────
     elif sport=='tennis':
         props,ev=get_odds_props('tennis_atp','player_aces')
         if not props: props,ev=get_odds_props('tennis_atp_french_open','player_aces')
@@ -660,7 +657,6 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'tennis_aces','tennis',line,best,gi,'',True,a))
 
-    # ── Golf ──────────────────────────────────────────────────────────────────
     elif sport=='golf':
         if not DATAGOLF_KEY:
             return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant.'}],0,0
@@ -684,32 +680,46 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.route('/api/debug-dk', methods=['GET'])
-def debug_dk():
-    """Debug DraftKings connectivity — ouvre dans browser pour diagnostiquer"""
+@app.route('/api/debug-nba', methods=['GET'])
+def debug_nba():
+    """Teste balldontlie + Odds API NBA depuis Render"""
     import traceback
     results={}
-    # Test NBA league
+    # Test balldontlie
     try:
-        r=requests.get(f"{DK_BASE}/leagues/{DK_NBA_LEAGUE}/categories",
-            headers=DK_HEADERS,timeout=15)
-        results['nba_categories']={
-            'status':r.status_code,
-            'body':r.text[:800],
-            'headers':dict(r.headers)
+        r=safe_req_bdl('/players',params={'search':'lebron james','per_page':3})
+        if r:
+            results['balldontlie']={'status':'OK','data':r.get('data',[])}
+        else:
+            results['balldontlie']={'status':'FAIL','response':None}
+    except Exception as e:
+        results['balldontlie']={'status':'ERROR','error':str(e),'trace':traceback.format_exc()[:300]}
+    # Test Odds API NBA player_points sur 1 event
+    try:
+        props,ev=get_odds_props('basketball_nba','player_points',max_games=1)
+        first_players=list(props.keys())[:5]
+        results['odds_api_nba']={
+            'status':'OK' if props else 'EMPTY',
+            'events_found':len(ev),
+            'props_found':len(props),
+            'sample_players':first_players
         }
     except Exception as e:
-        results['nba_categories']={'error':str(e),'trace':traceback.format_exc()[:300]}
-    # Test NHL league
+        results['odds_api_nba']={'status':'ERROR','error':str(e),'trace':traceback.format_exc()[:300]}
+    return jsonify(results)
+
+
+@app.route('/api/debug-dk', methods=['GET'])
+def debug_dk():
+    """Debug DraftKings NHL connectivity"""
+    import traceback
+    results={}
     try:
-        r2=requests.get(f"{DK_BASE}/leagues/42/categories",
+        r=requests.get(f"{DK_BASE}/leagues/42/categories",
             headers=DK_HEADERS,timeout=15)
-        results['nhl_categories']={
-            'status':r2.status_code,
-            'body':r2.text[:400]
-        }
+        results['nhl_categories']={'status':r.status_code,'body':r.text[:400]}
     except Exception as e:
-        results['nhl_categories']={'error':str(e)}
+        results['nhl_categories']={'error':str(e),'trace':traceback.format_exc()[:300]}
     return jsonify(results)
 
 
@@ -725,7 +735,7 @@ def daily_opportunities():
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
             return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
                 'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
-        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.5',
+        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.6',
             'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
             'total_games':n_games,'players_analyzed':analyzed,
             'opportunities_found':len(opps),'opportunities':opps,
@@ -840,18 +850,16 @@ def usage():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'2.5','mlb_season':CURRENT_MLB_SEASON,
+    return jsonify({'status':'healthy','version':'2.6','mlb_season':CURRENT_MLB_SEASON,
         'nba_season':NBA_SEASON,'sports':list(SPORT_STATS.keys()),
-        'nba_source':'DraftKings','nhl_source':'DraftKings+OddsAPI',
-        'debug_endpoint':'/api/debug-dk'})
+        'debug':'/api/debug-nba + /api/debug-dk'})
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'2.5',
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.6',
                     'sports':list(SPORT_STATS.keys())})
 
 if __name__ == '__main__':
     port=int(os.environ.get('PORT',5000))
-    print("🎰 Multi-Sport Analyzer v2.5 — MLB|NBA|NHL|Tennis|Golf")
+    print("🎰 Multi-Sport Analyzer v2.6 — MLB|NBA|NHL|Tennis|Golf",flush=True)
     app.run(host='0.0.0.0',port=port,debug=False)
-
