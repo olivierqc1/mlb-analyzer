@@ -302,7 +302,6 @@ def mlb_opp_k_pct(team):
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
 
-
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
 # ║  v2.6: NBA → direct Odds API (plan $30 supporte)   ║
@@ -549,6 +548,7 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
             'is_reliable':a['normality']['verdict']!='NON_NORMAL' and
                           (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
         'recent_games':a['recent']}
+
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
