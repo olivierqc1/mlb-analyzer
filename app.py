@@ -1,9 +1,9 @@
 # ╔══════════════════════════════════════════════════════╗
-# ║  app.py — PARTIE 1/2   (colle en premier)           ║
-# ║  v2.3: DraftKings NHL SOG                           ║
+# ║  app.py — PARTIE 1/3   (colle en premier)           ║
+# ║  v2.4: NBA Points/Rebounds/Assists ajouté           ║
 # ╚══════════════════════════════════════════════════════╝
 #!/usr/bin/env python3
-"""Multi-Sport Betting Analyzer v2.3"""
+"""Multi-Sport Betting Analyzer v2.4"""
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, numpy as np, os, math, time, re, io, csv
@@ -14,31 +14,45 @@ from collections import Counter
 app = Flask(__name__)
 CORS(app)
 
-ODDS_API_KEY    = os.environ.get('ODDS_API_KEY')
-DATAGOLF_KEY    = os.environ.get('DATAGOLF_KEY', '')
-ODDS_BASE       = "https://api.the-odds-api.com/v4"
-MLB_BASE        = "https://statsapi.mlb.com/api/v1"
-NHL_BASE        = "https://api-web.nhle.com/v1"
-NHL_SEARCH_BASE = "https://search.d3.nhle.com/api/v1/search"
-SACKMANN_BASE   = "https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master"
-DATAGOLF_BASE   = "https://feeds.datagolf.com"
-DK_BASE         = "https://sportsbook.draftkings.com/api/odds/v1"
-DK_HEADERS      = {
-    'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-    'Accept':'application/json','Referer':'https://sportsbook.draftkings.com/'
-}
-LEAGUE_AVG_K_PCT=0.225; CURRENT_MLB_SEASON=2026
-GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}; TEAM_STATS_CACHE={}; TENNIS_CACHE={}
+ODDS_API_KEY       = os.environ.get('ODDS_API_KEY')
+DATAGOLF_KEY       = os.environ.get('DATAGOLF_KEY','')
+BDL_KEY            = os.environ.get('BDL_KEY','d59ef355-67fa-4b6c-afbc-0aaf1f231c6a')
+ODDS_BASE          = "https://api.the-odds-api.com/v4"
+MLB_BASE           = "https://statsapi.mlb.com/api/v1"
+NHL_BASE           = "https://api-web.nhle.com/v1"
+NHL_SEARCH_BASE    = "https://search.d3.nhle.com/api/v1/search"
+SACKMANN_BASE      = "https://raw.githubusercontent.com/JeffSackmann/tennis_atp/master"
+DATAGOLF_BASE      = "https://feeds.datagolf.com"
+BDL_BASE           = "https://api.balldontlie.io/v1"
+DK_BASE            = "https://sportsbook.draftkings.com/api/odds/v1"
+DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36','Accept':'application/json','Referer':'https://sportsbook.draftkings.com/'}
+LEAGUE_AVG_K_PCT   = 0.225
+CURRENT_MLB_SEASON = 2026
+NBA_SEASON         = 2025   # 2024 = saison 2024-25
+NBA_MIN_MINUTES    = 20     # ignore garbage time
+
+GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
+TEAM_STATS_CACHE={}; TENNIS_CACHE={}; NBA_CACHE={}
 
 STAT_CONFIG = {
-    'pitcher_strikeouts':{'sport':'mlb','group':'pitching','col':'strikeOuts','label':'K','min_ip':3.0,'bettable':True,'min_games':5,'odds_sport':'baseball_mlb','odds_market':'pitcher_strikeouts'},
-    'batter_total_bases':{'sport':'mlb','group':'hitting','col':'totalBases','label':'TB','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'baseball_mlb','odds_market':'batter_total_bases'},
-    'skater_shots':      {'sport':'nhl','group':'skater','col':'shots','label':'SOG','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'icehockey_nhl','odds_market':'player_shots_on_goal'},
-    'tennis_aces':       {'sport':'tennis','group':'tennis','col':'aces','label':'ACE','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'tennis_atp','odds_market':'player_aces'},
-    'golf_scoring':      {'sport':'golf','group':'golf','col':'sg_total','label':'SG','min_ip':None,'bettable':True,'min_games':6,'odds_sport':'golf_pga','odds_market':'golfer_top_20_finish'},
+    'pitcher_strikeouts': {'sport':'mlb','group':'pitching','col':'strikeOuts','label':'K','min_ip':3.0,'bettable':True,'min_games':5,'odds_sport':'baseball_mlb','odds_market':'pitcher_strikeouts'},
+    'batter_total_bases': {'sport':'mlb','group':'hitting','col':'totalBases','label':'TB','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'baseball_mlb','odds_market':'batter_total_bases'},
+    'skater_shots':       {'sport':'nhl','group':'skater','col':'shots','label':'SOG','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'icehockey_nhl','odds_market':'player_shots_on_goal'},
+    'tennis_aces':        {'sport':'tennis','group':'tennis','col':'aces','label':'ACE','min_ip':None,'bettable':True,'min_games':8,'odds_sport':'tennis_atp','odds_market':'player_aces'},
+    'golf_scoring':       {'sport':'golf','group':'golf','col':'sg_total','label':'SG','min_ip':None,'bettable':True,'min_games':6,'odds_sport':'golf_pga','odds_market':'golfer_top_20_finish'},
+    'nba_points':         {'sport':'nba','group':'nba','col':'pts','label':'PTS','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'basketball_nba','odds_market':'player_points'},
+    'nba_rebounds':       {'sport':'nba','group':'nba','col':'reb','label':'REB','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'basketball_nba','odds_market':'player_rebounds'},
+    'nba_assists':        {'sport':'nba','group':'nba','col':'ast','label':'AST','min_ip':None,'bettable':True,'min_games':10,'odds_sport':'basketball_nba','odds_market':'player_assists'},
 }
-SPORT_STATS={'mlb':['pitcher_strikeouts','batter_total_bases'],'nhl':['skater_shots'],'tennis':['tennis_aces'],'golf':['golf_scoring']}
+SPORT_STATS = {
+    'mlb':    ['pitcher_strikeouts','batter_total_bases'],
+    'nhl':    ['skater_shots'],
+    'nba':    ['nba_points','nba_rebounds','nba_assists'],
+    'tennis': ['tennis_aces'],
+    'golf':   ['golf_scoring'],
+}
 
+# ── Utils ─────────────────────────────────────────────────────────────────────
 def to_python(obj):
     if isinstance(obj,dict): return {k:to_python(v) for k,v in obj.items()}
     if isinstance(obj,list): return [to_python(v) for v in obj]
@@ -72,9 +86,20 @@ def safe_req_dk(url,params=None):
         r=requests.get(url,params=params,headers=DK_HEADERS,timeout=15)
         if r.status_code==200: return r.json()
         print(f"DK HTTP {r.status_code}: {url[:80]}")
-    except Exception as e: print(f"DK error {url[:60]}: {e}")
+    except Exception as e: print(f"DK error: {e}")
     return None
 
+def safe_req_bdl(endpoint,params=None):
+    """balldontlie.io — nécessite Authorization header"""
+    try:
+        r=requests.get(f"{BDL_BASE}{endpoint}",params=params,
+            headers={'Authorization':BDL_KEY},timeout=15)
+        if r.status_code==200: return r.json()
+        print(f"BDL HTTP {r.status_code}: {endpoint}")
+    except Exception as e: print(f"BDL error: {e}")
+    return None
+
+# ── Stats ─────────────────────────────────────────────────────────────────────
 def normality_tests(vals):
     r={}
     try:
@@ -277,6 +302,83 @@ def mlb_opp_k_pct(team):
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
 
+# ╔══════════════════════════════════════════════════════╗
+# ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
+# ╚══════════════════════════════════════════════════════╝
+
+# ── NBA — balldontlie.io ──────────────────────────────────────────────────────
+def nba_search_player(name):
+    """Cherche un joueur NBA par nom, retourne son BDL ID"""
+    key='nba_'+norm_name(name)
+    if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
+    # Essaie avec le nom complet d'abord, puis juste le nom de famille
+    for search_term in [name, name.split()[-1]]:
+        data=safe_req_bdl('/players',params={'search':search_term,'per_page':25})
+        if not data: continue
+        for p in data.get('data',[]):
+            full=f"{p.get('first_name','')} {p.get('last_name','')}".strip()
+            if names_match(name,full):
+                PLAYER_ID_CACHE[key]=p['id']; return p['id']
+    return None
+
+def nba_parse_minutes(min_str):
+    """'32:45' → 32.75, '32' → 32, None → 0"""
+    if not min_str: return 0.0
+    try:
+        parts=str(min_str).split(':')
+        return float(parts[0])+(float(parts[1])/60 if len(parts)>1 else 0)
+    except: return 0.0
+
+def nba_get_gamelog(player_id, stat_col):
+    """
+    Récupère le gamelog d'un joueur NBA via balldontlie.
+    stat_col: 'pts', 'reb', 'ast'
+    Filtre les games < NBA_MIN_MINUTES (garbage time / blessure).
+    Combine saison régulière 2024-25 + playoffs 2024-25.
+    """
+    ck=f"nba_{player_id}_{stat_col}"
+    if ck in NBA_CACHE: return NBA_CACHE[ck]
+
+    games=[]; cursor=None
+    # Fetch avec pagination (max 100/page)
+    for attempt in range(5):  # max 5 pages = 500 games, largement suffisant
+        params={'player_ids[]':player_id,'seasons[]':NBA_SEASON,'per_page':100,'postseason':False}
+        if cursor: params['cursor']=cursor
+        data=safe_req_bdl('/stats',params=params)
+        if not data: break
+        for g in data.get('data',[]):
+            mins=nba_parse_minutes(g.get('min'))
+            if mins < NBA_MIN_MINUTES: continue  # ignore garbage time
+            val=g.get(stat_col)
+            if val is None: continue
+            gdate=g.get('game',{}).get('date','')[:10] if g.get('game') else ''
+            games.append({'date':gdate,'stat':int(val),'min':round(mins,1)})
+        meta=data.get('meta',{})
+        cursor=meta.get('next_cursor')
+        if not cursor: break
+        time.sleep(0.2)
+
+    # Ajoute les playoffs séparément
+    params_po={'player_ids[]':player_id,'seasons[]':NBA_SEASON,'per_page':100,'postseason':True}
+    data_po=safe_req_bdl('/stats',params=params_po)
+    if data_po:
+        for g in data_po.get('data',[]):
+            mins=nba_parse_minutes(g.get('min'))
+            if mins < NBA_MIN_MINUTES: continue
+            val=g.get(stat_col)
+            if val is None: continue
+            gdate=g.get('game',{}).get('date','')[:10] if g.get('game') else ''
+            games.append({'date':gdate,'stat':int(val),'min':round(mins,'1' and 1)})
+
+    games.sort(key=lambda x:x['date'],reverse=True)
+    # Déduplique
+    seen=set(); uniq=[]
+    for g in games:
+        if g['date'] not in seen: seen.add(g['date']); uniq.append(g)
+
+    if uniq: NBA_CACHE[ck]=uniq
+    return uniq or None
+
 # ── NHL ───────────────────────────────────────────────────────────────────────
 def nhl_search_player(name):
     key='nhl_'+norm_name(name)
@@ -348,90 +450,8 @@ def golf_get_stats(player_name):
     if games: GAMELOG_CACHE[ck]=games
     return games or None
 
-
-# ╔══════════════════════════════════════════════════════╗
-# ║  app.py — PARTIE 2/2   (colle à la suite de P1)     ║
-# ║  DraftKings NHL SOG — auto-découverte des catégories ║
-# ╚══════════════════════════════════════════════════════╝
-
-def dk_nhl_get_sog():
-    """
-    Fetch NHL shots on goal props depuis DraftKings.
-    Auto-découverte des catégories = résistant aux changements d'IDs.
-    Retourne (props, ev) dans le même format que get_odds_props().
-    """
-    props={}; ev={}
-
-    # Step 1 — Récupère les catégories NHL (league 42)
-    cats_data = safe_req_dk(f"{DK_BASE}/leagues/42/categories")
-    if not cats_data:
-        print("DK NHL: impossible de récupérer les catégories")
-        return {},{}
-
-    # Step 2 — Trouve la catégorie Shots on Goal
-    sog_cat_id=None; sog_subcat_id=None
-    eg = cats_data.get('eventGroup',{})
-    for cat in eg.get('offerCategories',[]):
-        for desc in cat.get('offerSubcategoryDescriptors',[]):
-            name_lower = desc.get('name','').lower()
-            if 'shot' in name_lower:
-                sog_cat_id   = cat.get('offerCategoryId')
-                sog_subcat_id= desc.get('subcategoryId')
-                print(f"DK NHL SOG trouvé: cat={sog_cat_id} subcat={sog_subcat_id} ({desc.get('name')})")
-                break
-        if sog_cat_id: break
-
-    if not sog_cat_id:
-        print("DK NHL: catégorie Shots on Goal introuvable")
-        # Log les catégories disponibles pour debug
-        for cat in eg.get('offerCategories',[]):
-            for desc in cat.get('offerSubcategoryDescriptors',[]):
-                print(f"  DK catégorie dispo: {desc.get('name','')}")
-        return {},{}
-
-    # Step 3 — Récupère les props SOG
-    data = safe_req_dk(f"{DK_BASE}/leagues/42/categories/{sog_cat_id}/subcategories/{sog_subcat_id}")
-    if not data:
-        print("DK NHL: impossible de récupérer les props SOG")
-        return {},{}
-
-    # Step 4 — Parse les events (pour home/away team)
-    for event in data.get('eventGroup',{}).get('events',[]):
-        eid=str(event.get('eventId',''))
-        ev[eid]={
-            'home_team': event.get('teamName1','') or event.get('homeTeam',''),
-            'away_team': event.get('teamName2','') or event.get('awayTeam',''),
-            'time':      event.get('startDate','')  or event.get('eventDatetimeLocal','')
-        }
-
-    # Step 5 — Parse les offers (props joueurs)
-    for cat in data.get('eventGroup',{}).get('offerCategories',[]):
-        for desc in cat.get('offerSubcategoryDescriptors',[]):
-            if 'shot' not in desc.get('name','').lower(): continue
-            subcat = desc.get('offerSubcategory',{})
-            for offer in subcat.get('offers',[]):
-                eid=str(offer.get('eventId',''))
-                outcomes=offer.get('outcomes',[])
-                player=None; lines=[]
-                for oc in outcomes:
-                    # Nom du joueur peut être dans 'participant' ou 'label' ou 'criterionName'
-                    p = (oc.get('participant') or oc.get('label') or '').strip()
-                    if p and p not in ('Over','Under','Yes','No'): player=p
-                    line_val = oc.get('line') or oc.get('handicap')
-                    btype    = oc.get('label','')
-                    if btype not in ('Over','Under'): continue
-                    try: price=int(str(oc.get('oddsAmerican','-110')).replace('+',''))
-                    except: price=-110
-                    if line_val is not None:
-                        lines.append({'book':'DRAFTKINGS','line':float(line_val),'price':price,'type':btype})
-                if player and lines:
-                    if player not in props: props[player]={'game_id':eid,'lines':[]}
-                    props[player]['lines'].extend(lines)
-
-    print(f"DK NHL SOG: {len(props)} joueurs trouvés")
-    return props,ev
-
-def get_odds_props(odds_sport,odds_market,max_games=15):
+# ── Odds ──────────────────────────────────────────────────────────────────────
+def get_odds_props(odds_sport,odds_market,max_games=20):
     if not ODDS_API_KEY: return {},{}
     data=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
     if not data: return {},{}
@@ -450,17 +470,61 @@ def get_odds_props(odds_sport,odds_market,max_games=15):
                         if not player or point is None: continue
                         if player not in props: props[player]={'game_id':gid,'lines':[]}
                         props[player]['lines'].append({'book':bk['key'],'line':float(point),'price':int(oc.get('price',-110)),'type':btype})
-            time.sleep(0.3)
+            time.sleep(0.25)
         except: continue
     return props,ev
 
+def dk_nhl_get_sog():
+    """DraftKings NHL SOG — auto-découverte des catégories"""
+    props={}; ev={}
+    cats_data=safe_req_dk(f"{DK_BASE}/leagues/42/categories")
+    if not cats_data: return {},{}
+    sog_cat_id=None; sog_subcat_id=None
+    eg=cats_data.get('eventGroup',{})
+    for cat in eg.get('offerCategories',[]):
+        for desc in cat.get('offerSubcategoryDescriptors',[]):
+            if 'shot' in desc.get('name','').lower():
+                sog_cat_id=cat.get('offerCategoryId'); sog_subcat_id=desc.get('subcategoryId')
+                print(f"DK NHL SOG: cat={sog_cat_id} subcat={sog_subcat_id} ({desc.get('name')})")
+                break
+        if sog_cat_id: break
+    if not sog_cat_id:
+        print("DK NHL: Shots catégorie introuvable. Catégories dispo:")
+        for cat in eg.get('offerCategories',[]):
+            for desc in cat.get('offerSubcategoryDescriptors',[]): print(f"  {desc.get('name','')}")
+        return {},{}
+    data=safe_req_dk(f"{DK_BASE}/leagues/42/categories/{sog_cat_id}/subcategories/{sog_subcat_id}")
+    if not data: return {},{}
+    for event in data.get('eventGroup',{}).get('events',[]):
+        eid=str(event.get('eventId',''))
+        ev[eid]={'home_team':event.get('teamName1',''),'away_team':event.get('teamName2',''),'time':event.get('startDate','')}
+    for cat in data.get('eventGroup',{}).get('offerCategories',[]):
+        for desc in cat.get('offerSubcategoryDescriptors',[]):
+            if 'shot' not in desc.get('name','').lower(): continue
+            for offer in desc.get('offerSubcategory',{}).get('offers',[]):
+                eid=str(offer.get('eventId',''))
+                player=None; lines=[]
+                for oc in offer.get('outcomes',[]):
+                    p=(oc.get('participant') or oc.get('label') or '').strip()
+                    if p and p not in ('Over','Under','Yes','No'): player=p
+                    btype=oc.get('label','')
+                    if btype not in ('Over','Under'): continue
+                    line_val=oc.get('line') or oc.get('handicap')
+                    try: price=int(str(oc.get('oddsAmerican','-110')).replace('+',''))
+                    except: price=-110
+                    if line_val is not None: lines.append({'book':'DRAFTKINGS','line':float(line_val),'price':price,'type':btype})
+                if player and lines:
+                    if player not in props: props[player]={'game_id':eid,'lines':[]}
+                    props[player]['lines'].extend(lines)
+    print(f"DK NHL SOG: {len(props)} joueurs")
+    return props,ev
+
 def nhl_get_odds():
-    """DraftKings en premier, puis The Odds API en fallback"""
-    props,ev = dk_nhl_get_sog()
+    props,ev=dk_nhl_get_sog()
     if props: return props,ev
-    print("DK NHL: 0 résultat, fallback The Odds API")
+    print("DK NHL fallback → The Odds API")
     for sk in ['icehockey_nhl','icehockey_nhl_championship']:
-        p,e = get_odds_props(sk,'player_shots_on_goal')
+        p,e=get_odds_props(sk,'player_shots_on_goal')
         if p: return p,e
     return {},{}
 
@@ -474,11 +538,16 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
         'statistical_validation':{'normality':a['normality'],'chi_gof':a['chi_gof'],'is_reliable':a['normality']['verdict']!='NON_NORMAL' and (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
         'recent_games':a['recent']}
 
+# ╔══════════════════════════════════════════════════════╗
+# ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
+# ╚══════════════════════════════════════════════════════╝
+
 def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
     stat_types=[stat_type_filter] if stat_type_filter else SPORT_STATS.get(sport,[])
     if not stat_types: return [],0,0
     opps=[]; analyzed=0; n_games=0
 
+    # ── MLB ───────────────────────────────────────────────────────────────────
     if sport=='mlb':
         pitchers=mlb_get_pitchers(); n_games=len(set(p['home_team'] for p in pitchers))
         for st in stat_types:
@@ -500,8 +569,7 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
                     opp=''; ih=True; gi={'home_team':'','away_team':'','time':''}; time.sleep(0.1)
                 games=mlb_get_gamelog(pid,st)
                 if not games or len(games)<cfg['min_games']: continue
-                analyzed+=1
-                adj=None
+                analyzed+=1; adj=None
                 if st=='pitcher_strikeouts':
                     kp=mlb_opp_k_pct(opp)
                     if kp: adj=round(float(np.mean([g['stat'] for g in games]))+(kp-LEAGUE_AVG_K_PCT)/0.01*0.3,2)
@@ -509,10 +577,53 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
                 if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
                 opps.append(_build_opp(pname,st,'mlb',line,best,ev.get(pd['game_id'],gi),opp,ih,a))
 
+    # ── NBA ───────────────────────────────────────────────────────────────────
+    elif sport=='nba':
+        # Pour NBA: on scan les 3 marchés (pts/reb/ast) ensemble
+        # On fetch les odds pour chaque marché, on déduplique les joueurs
+        nba_stat_map={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}
+        all_player_ids={}  # player_name → bdl_id (cache pour éviter double recherche)
+        n_games=0
+
+        for st in stat_types:
+            cfg=STAT_CONFIG[st]
+            props,ev=get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
+            if not props: continue
+            n_games=max(n_games,len(ev))
+            stat_col=nba_stat_map.get(st,'pts')
+
+            for pname,pd in props.items():
+                overs=[l for l in pd['lines'] if l['type']=='Over']
+                if not overs: continue
+                line=Counter([l['line'] for l in overs]).most_common(1)[0][0]
+                best=min(overs,key=lambda x:abs(x['line']-line))
+
+                # Search player (cache pour éviter appels multiples)
+                pkey=norm_name(pname)
+                if pkey not in all_player_ids:
+                    all_player_ids[pkey]=nba_search_player(pname)
+                    time.sleep(0.1)
+                pid=all_player_ids[pkey]
+                if not pid: continue
+
+                games=nba_get_gamelog(pid,stat_col)
+                if not games or len(games)<cfg['min_games']: continue
+                analyzed+=1
+
+                a=analyze(games,line,st)
+                if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
+
+                gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
+                opps.append(_build_opp(pname,st,'nba',line,best,gi,'',True,a))
+
+        if not n_games:
+            return [{'_no_key':True,'message':'🏀 NBA: Aucun marché player props trouvé. Les playoffs NBA devraient être couverts par The Odds API.'}],0,0
+
+    # ── NHL ───────────────────────────────────────────────────────────────────
     elif sport=='nhl':
         n_games=10; props,ev=nhl_get_odds()
         if not props:
-            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché SOG trouvé ni sur DraftKings ni sur The Odds API.'}],0,0
+            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché SOG trouvé sur DraftKings ni The Odds API.'}],0,0
         cfg=STAT_CONFIG['skater_shots']
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
@@ -529,12 +640,13 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'skater_shots','nhl',line,best,gi,'',True,a))
 
+    # ── Tennis ────────────────────────────────────────────────────────────────
     elif sport=='tennis':
         props,ev=get_odds_props('tennis_atp','player_aces')
         if not props: props,ev=get_odds_props('tennis_atp_french_open','player_aces')
         n_games=len(props)
         if not props:
-            return [{'_no_key':True,'message':'🎾 Tennis: Aucun marché player_aces actif. Prochain tournoi ATP avec aces: Roland Garros (fin mai).'}],0,0
+            return [{'_no_key':True,'message':'🎾 Tennis: Aucun marché player_aces actif. Prochain: Roland Garros fin mai.'}],0,0
         cfg=STAT_CONFIG['tennis_aces']
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
@@ -549,6 +661,7 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'tennis_aces','tennis',line,best,gi,'',True,a))
 
+    # ── Golf ──────────────────────────────────────────────────────────────────
     elif sport=='golf':
         if not DATAGOLF_KEY:
             return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant dans Render > Environment Variables.'}],0,0
@@ -570,6 +683,7 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
     opps.sort(key=lambda x:({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3),-x['line_analysis']['edge']))
     return opps,analyzed,n_games
 
+# ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/daily-opportunities',methods=['GET'])
 def daily_opportunities():
     try:
@@ -580,9 +694,9 @@ def daily_opportunities():
         opps,analyzed,n_games=scan_sport(sport,stat_type,min_edge)
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
             return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
-        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.3','stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],'total_games':n_games,'players_analyzed':analyzed,'opportunities_found':len(opps),'opportunities':opps,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')}))
+        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.4','stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],'total_games':n_games,'players_analyzed':analyzed,'opportunities_found':len(opps),'opportunities':opps,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')}))
     except Exception as e:
-        import traceback; return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:800]}),500
+        import traceback; return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:1000]}),500
 
 @app.route('/api/actual-result',methods=['GET'])
 def actual_result():
@@ -606,6 +720,10 @@ def actual_result():
         elif sport=='nhl':
             pid=nhl_search_player(player_name)
             if pid: games=nhl_get_skater_gamelog(pid)
+        elif sport=='nba':
+            stat_col={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}.get(stat_type,'pts')
+            pid=nba_search_player(player_name)
+            if pid: games=nba_get_gamelog(pid,stat_col)
         elif sport=='tennis': games=tennis_get_aces(player_name)
         if not games: return jsonify({'status':'NOT_FOUND','message':f'Aucune donnée pour {player_name}'}),404
         if date_str:
@@ -631,7 +749,7 @@ def run_backtest():
                 pitcher=next((p for p in mlb_get_pitchers() if names_match(player_name,p['name'])),None)
                 if pitcher: games=mlb_get_gamelog(pitcher['id'],stat_type)
                 else:
-                    pid=mlb_search_player(player_name)
+                    pid=mlb_search_player(player_name); 
                     if pid: games=mlb_get_gamelog(pid,stat_type)
             else:
                 pid=mlb_search_player(player_name)
@@ -639,6 +757,10 @@ def run_backtest():
         elif sport=='nhl':
             pid=nhl_search_player(player_name)
             if pid: games=nhl_get_skater_gamelog(pid)
+        elif sport=='nba':
+            stat_col={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}.get(stat_type,'pts')
+            pid=nba_search_player(player_name)
+            if pid: games=nba_get_gamelog(pid,stat_col)
         elif sport=='tennis': games=tennis_get_aces(player_name)
         if not games: return jsonify({'status':'ERROR','message':f'Aucune donnée pour {player_name}'}),404
         result=backtest(games,stat_type)
@@ -660,13 +782,13 @@ def usage():
 
 @app.route('/api/health',methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'2.3','mlb_season':CURRENT_MLB_SEASON,'sports':list(SPORT_STATS.keys()),'nhl_source':'DraftKings (fallback: The Odds API)'})
+    return jsonify({'status':'healthy','version':'2.4','mlb_season':CURRENT_MLB_SEASON,'nba_season':NBA_SEASON,'sports':list(SPORT_STATS.keys()),'nba_source':'balldontlie.io','nhl_source':'DraftKings+OddsAPI'})
 
 @app.route('/',methods=['GET'])
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'2.3'})
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.4','sports':list(SPORT_STATS.keys())})
 
 if __name__ == '__main__':
     port=int(os.environ.get('PORT',5000))
-    print("🎰 Multi-Sport Analyzer v2.3 — MLB|NHL(DraftKings)|Tennis|Golf")
+    print("🎰 Multi-Sport Analyzer v2.4 — MLB|NBA|NHL|Tennis|Golf")
     app.run(host='0.0.0.0',port=port,debug=False)
