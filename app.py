@@ -601,11 +601,13 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
         'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],'std':a['std'],'avg_last_5':a['l5'],'avg_last_10':a['l10'],'consistency':a['cons'],'games_analyzed':a['n'],'over_count':a['over_n'],'under_count':a['under_n'],'r_squared':a['r_sq'],'trend_slope':a['slope']},
         'statistical_validation':{'normality':a['normality'],'chi_gof':a['chi_gof'],'is_reliable':a['normality']['verdict']!='NON_NORMAL' and (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
         'recent_games':a['recent']}
+
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
+# ║  v2.5: endpoint /api/debug-dk ajouté               ║
 # ╚══════════════════════════════════════════════════════╝
 
-def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
+def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
     stat_types=[stat_type_filter] if stat_type_filter else SPORT_STATS.get(sport,[])
     if not stat_types: return [],0,0
     opps=[]; analyzed=0; n_games=0
@@ -642,51 +644,38 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
 
     # ── NBA ───────────────────────────────────────────────────────────────────
     elif sport=='nba':
-        # Pour NBA: on scan les 3 marchés (pts/reb/ast) ensemble
-        # On fetch les odds pour chaque marché, on déduplique les joueurs
         nba_stat_map={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}
-        all_player_ids={}  # player_name → bdl_id (cache pour éviter double recherche)
-        n_games=0
-
+        all_player_ids={}; n_games=0
         for st in stat_types:
-            cfg=STAT_CONFIG[st]
-            props,ev=get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
+            props,ev=nba_get_odds(st)
             if not props: continue
             n_games=max(n_games,len(ev))
             stat_col=nba_stat_map.get(st,'pts')
-
             for pname,pd in props.items():
                 overs=[l for l in pd['lines'] if l['type']=='Over']
                 if not overs: continue
                 line=Counter([l['line'] for l in overs]).most_common(1)[0][0]
                 best=min(overs,key=lambda x:abs(x['line']-line))
-
-                # Search player (cache pour éviter appels multiples)
                 pkey=norm_name(pname)
                 if pkey not in all_player_ids:
-                    all_player_ids[pkey]=nba_search_player(pname)
-                    time.sleep(0.1)
+                    all_player_ids[pkey]=nba_search_player(pname); time.sleep(0.1)
                 pid=all_player_ids[pkey]
                 if not pid: continue
-
                 games=nba_get_gamelog(pid,stat_col)
-                if not games or len(games)<cfg['min_games']: continue
+                if not games or len(games)<STAT_CONFIG[st]['min_games']: continue
                 analyzed+=1
-
                 a=analyze(games,line,st)
                 if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
-
                 gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
                 opps.append(_build_opp(pname,st,'nba',line,best,gi,'',True,a))
-
         if not n_games:
-            return [{'_no_key':True,'message':'🏀 NBA: Aucun marché player props trouvé. Les playoffs NBA devraient être couverts par The Odds API.'}],0,0
+            return [{'_no_key':True,'message':'🏀 NBA: Aucun marché player props trouvé sur DraftKings. Vérifie /api/debug-dk pour diagnostiquer.'}],0,0
 
     # ── NHL ───────────────────────────────────────────────────────────────────
     elif sport=='nhl':
         n_games=10; props,ev=nhl_get_odds()
         if not props:
-            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché SOG trouvé sur DraftKings ni The Odds API.'}],0,0
+            return [{'_no_key':True,'message':'🏒 NHL: Aucun marché SOG trouvé.'}],0,0
         cfg=STAT_CONFIG['skater_shots']
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
@@ -727,7 +716,7 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
     # ── Golf ──────────────────────────────────────────────────────────────────
     elif sport=='golf':
         if not DATAGOLF_KEY:
-            return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant dans Render > Environment Variables.'}],0,0
+            return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant.'}],0,0
         cfg=STAT_CONFIG['golf_scoring']; props,ev=get_odds_props(cfg['odds_sport'],cfg['odds_market'])
         n_games=len(props)
         for pname,pd in props.items():
@@ -746,27 +735,66 @@ def scan_sport(sport,stat_type_filter=None,min_edge=5.0):
     opps.sort(key=lambda x:({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3),-x['line_analysis']['edge']))
     return opps,analyzed,n_games
 
+
 # ── Routes ────────────────────────────────────────────────────────────────────
-@app.route('/api/daily-opportunities',methods=['GET'])
+@app.route('/api/debug-dk', methods=['GET'])
+def debug_dk():
+    """Debug DraftKings connectivity — ouvre dans browser pour diagnostiquer"""
+    import traceback
+    results={}
+    # Test NBA league
+    try:
+        r=requests.get(f"{DK_BASE}/leagues/{DK_NBA_LEAGUE}/categories",
+            headers=DK_HEADERS,timeout=15)
+        results['nba_categories']={
+            'status':r.status_code,
+            'body':r.text[:800],
+            'headers':dict(r.headers)
+        }
+    except Exception as e:
+        results['nba_categories']={'error':str(e),'trace':traceback.format_exc()[:300]}
+    # Test NHL league
+    try:
+        r2=requests.get(f"{DK_BASE}/leagues/42/categories",
+            headers=DK_HEADERS,timeout=15)
+        results['nhl_categories']={
+            'status':r2.status_code,
+            'body':r2.text[:400]
+        }
+    except Exception as e:
+        results['nhl_categories']={'error':str(e)}
+    return jsonify(results)
+
+
+@app.route('/api/daily-opportunities', methods=['GET'])
 def daily_opportunities():
     try:
         sport=request.args.get('sport','mlb').lower()
         stat_type=request.args.get('stat_type',None)
         min_edge=float(request.args.get('min_edge',5))
-        if sport not in SPORT_STATS: return jsonify({'status':'ERROR','message':f"sport: {list(SPORT_STATS.keys())}"}),400
+        if sport not in SPORT_STATS:
+            return jsonify({'status':'ERROR','message':f"sport: {list(SPORT_STATS.keys())}"}),400
         opps,analyzed,n_games=scan_sport(sport,stat_type,min_edge)
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
-            return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
-        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.4','stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],'total_games':n_games,'players_analyzed':analyzed,'opportunities_found':len(opps),'opportunities':opps,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')}))
+            return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
+                'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
+        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.5',
+            'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
+            'total_games':n_games,'players_analyzed':analyzed,
+            'opportunities_found':len(opps),'opportunities':opps,
+            'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')}))
     except Exception as e:
-        import traceback; return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:1000]}),500
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:1000]}),500
 
-@app.route('/api/actual-result',methods=['GET'])
+
+@app.route('/api/actual-result', methods=['GET'])
 def actual_result():
     try:
         player_name=request.args.get('player',''); stat_type=request.args.get('stat_type','')
         sport=request.args.get('sport','mlb'); date_str=request.args.get('date','')
-        if not player_name or not stat_type: return jsonify({'status':'ERROR','message':'player et stat_type requis'}),400
+        if not player_name or not stat_type:
+            return jsonify({'status':'ERROR','message':'player et stat_type requis'}),400
         games=None
         if sport=='mlb':
             cfg=STAT_CONFIG.get(stat_type)
@@ -787,22 +815,34 @@ def actual_result():
             stat_col={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}.get(stat_type,'pts')
             pid=nba_search_player(player_name)
             if pid: games=nba_get_gamelog(pid,stat_col)
-        elif sport=='tennis': games=tennis_get_aces(player_name)
-        if not games: return jsonify({'status':'NOT_FOUND','message':f'Aucune donnée pour {player_name}'}),404
+        elif sport=='tennis':
+            games=tennis_get_aces(player_name)
+        if not games:
+            return jsonify({'status':'NOT_FOUND','message':f'Aucune donnée pour {player_name}'}),404
         if date_str:
             target=date_str[:10]
             exact=[g for g in games if g.get('date','')[:10]==target]
-            if exact: return jsonify(to_python({'status':'SUCCESS','player':player_name,'stat_type':stat_type,'date':target,'actual_value':exact[0]['stat'],'found':'exact'}))
+            if exact:
+                return jsonify(to_python({'status':'SUCCESS','player':player_name,
+                    'stat_type':stat_type,'date':target,'actual_value':exact[0]['stat'],'found':'exact'}))
             for g in sorted(games,key=lambda x:x.get('date','')):
-                if g.get('date','')[:10]>=target: return jsonify(to_python({'status':'SUCCESS','player':player_name,'stat_type':stat_type,'date':g['date'][:10],'actual_value':g['stat'],'found':'closest'}))
-        return jsonify(to_python({'status':'SUCCESS','player':player_name,'stat_type':stat_type,'date':games[0].get('date','')[:10],'actual_value':games[0]['stat'],'found':'latest'}))
+                if g.get('date','')[:10]>=target:
+                    return jsonify(to_python({'status':'SUCCESS','player':player_name,
+                        'stat_type':stat_type,'date':g['date'][:10],'actual_value':g['stat'],'found':'closest'}))
+        return jsonify(to_python({'status':'SUCCESS','player':player_name,
+            'stat_type':stat_type,'date':games[0].get('date','')[:10],
+            'actual_value':games[0]['stat'],'found':'latest'}))
     except Exception as e:
-        import traceback; return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
 
-@app.route('/api/backtest',methods=['GET'])
+
+@app.route('/api/backtest', methods=['GET'])
 def run_backtest():
     try:
-        player_name=request.args.get('player',''); stat_type=request.args.get('stat_type','pitcher_strikeouts'); sport=request.args.get('sport','mlb')
+        player_name=request.args.get('player','')
+        stat_type=request.args.get('stat_type','pitcher_strikeouts')
+        sport=request.args.get('sport','mlb')
         if not player_name: return jsonify({'status':'ERROR','message':'player requis'}),400
         if stat_type not in STAT_CONFIG: return jsonify({'status':'ERROR','message':'stat_type invalide'}),400
         games=None
@@ -812,7 +852,7 @@ def run_backtest():
                 pitcher=next((p for p in mlb_get_pitchers() if names_match(player_name,p['name'])),None)
                 if pitcher: games=mlb_get_gamelog(pitcher['id'],stat_type)
                 else:
-                    pid=mlb_search_player(player_name); 
+                    pid=mlb_search_player(player_name)
                     if pid: games=mlb_get_gamelog(pid,stat_type)
             else:
                 pid=mlb_search_player(player_name)
@@ -824,35 +864,47 @@ def run_backtest():
             stat_col={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}.get(stat_type,'pts')
             pid=nba_search_player(player_name)
             if pid: games=nba_get_gamelog(pid,stat_col)
-        elif sport=='tennis': games=tennis_get_aces(player_name)
-        if not games: return jsonify({'status':'ERROR','message':f'Aucune donnée pour {player_name}'}),404
+        elif sport=='tennis':
+            games=tennis_get_aces(player_name)
+        if not games:
+            return jsonify({'status':'ERROR','message':f'Aucune donnée pour {player_name}'}),404
         result=backtest(games,stat_type)
-        if not result: return jsonify({'status':'ERROR','message':'Pas assez de données (min 13 matchs)'}),400
-        return jsonify(to_python({'status':'SUCCESS','player':player_name,'stat_type':stat_type,'sport':sport,'total_games_available':len(games),'backtest':result}))
+        if not result:
+            return jsonify({'status':'ERROR','message':'Pas assez de données (min 13 matchs)'}),400
+        return jsonify(to_python({'status':'SUCCESS','player':player_name,'stat_type':stat_type,
+            'sport':sport,'total_games_available':len(games),'backtest':result}))
     except Exception as e:
-        import traceback; return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
+        import traceback
+        return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
 
-@app.route('/api/mlb/schedule',methods=['GET'])
+
+@app.route('/api/mlb/schedule', methods=['GET'])
 def mlb_schedule():
-    p=mlb_get_pitchers(); return jsonify({'status':'SUCCESS','pitchers':p,'count':len(p)})
+    p=mlb_get_pitchers()
+    return jsonify({'status':'SUCCESS','pitchers':p,'count':len(p)})
 
-@app.route('/api/odds/usage',methods=['GET'])
+@app.route('/api/odds/usage', methods=['GET'])
 def usage():
     try:
         r=requests.get(f"{ODDS_BASE}/sports",params={'apiKey':ODDS_API_KEY},timeout=10)
-        return jsonify({'used':r.headers.get('x-requests-used','N/A'),'remaining':r.headers.get('x-requests-remaining','N/A')})
+        return jsonify({'used':r.headers.get('x-requests-used','N/A'),
+                        'remaining':r.headers.get('x-requests-remaining','N/A')})
     except Exception as e: return jsonify({'error':str(e)}),500
 
-@app.route('/api/health',methods=['GET'])
+@app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'2.4','mlb_season':CURRENT_MLB_SEASON,'nba_season':NBA_SEASON,'sports':list(SPORT_STATS.keys()),'nba_source':'balldontlie.io','nhl_source':'DraftKings+OddsAPI'})
+    return jsonify({'status':'healthy','version':'2.5','mlb_season':CURRENT_MLB_SEASON,
+        'nba_season':NBA_SEASON,'sports':list(SPORT_STATS.keys()),
+        'nba_source':'DraftKings','nhl_source':'DraftKings+OddsAPI',
+        'debug_endpoint':'/api/debug-dk'})
 
-@app.route('/',methods=['GET'])
+@app.route('/', methods=['GET'])
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'2.4','sports':list(SPORT_STATS.keys())})
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.5',
+                    'sports':list(SPORT_STATS.keys())})
 
 if __name__ == '__main__':
     port=int(os.environ.get('PORT',5000))
-    print("🎰 Multi-Sport Analyzer v2.4 — MLB|NBA|NHL|Tennis|Golf")
+    print("🎰 Multi-Sport Analyzer v2.5 — MLB|NBA|NHL|Tennis|Golf")
     app.run(host='0.0.0.0',port=port,debug=False)
 
