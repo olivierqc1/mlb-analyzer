@@ -304,7 +304,7 @@ def mlb_opp_k_pct(team):
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
-# ║  v2.5: DraftKings NBA Points/Rebounds/Assists       ║
+# ║  v2.6: NBA → direct Odds API (plan $30 supporte)   ║
 # ╚══════════════════════════════════════════════════════╝
 
 # ── NBA — balldontlie.io ──────────────────────────────────────────────────────
@@ -361,97 +361,48 @@ def nba_get_gamelog(player_id, stat_col):
     if uniq: NBA_CACHE[ck]=uniq
     return uniq or None
 
-# ── DraftKings NBA props ──────────────────────────────────────────────────────
-# DK league ID NBA = 42648
-DK_NBA_LEAGUE = 42648
-
-# Map stat → mots-clés pour auto-découverte catégorie DK
-DK_NBA_CATEGORY_KEYWORDS = {
-    'nba_points':   ['point','pts'],
-    'nba_rebounds': ['rebound','reb'],
-    'nba_assists':  ['assist','ast'],
-}
-
-def dk_nba_get_props(stat_type):
-    """
-    Fetch props NBA depuis DraftKings pour un stat_type donné.
-    Auto-découverte de la catégorie via mots-clés.
-    Retourne (props, ev) dans le format standard.
-    """
+# ── Odds API ──────────────────────────────────────────────────────────────────
+def get_odds_props(odds_sport, odds_market, max_games=20):
+    if not ODDS_API_KEY: return {},{}
+    # Step 1: récupère les events
+    data=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
+        params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
+    if not data:
+        print(f"Odds API: aucun event pour {odds_sport}")
+        return {},{}
     props={}; ev={}
-    keywords=DK_NBA_CATEGORY_KEYWORDS.get(stat_type,[])
-    if not keywords: return {},{}
-
-    # Step 1 — Catégories NBA
-    cats_data=safe_req_dk(f"{DK_BASE}/leagues/{DK_NBA_LEAGUE}/categories")
-    if not cats_data:
-        print(f"DK NBA: impossible de récupérer les catégories (league {DK_NBA_LEAGUE})")
-        return {},{}
-
-    cat_id=None; subcat_id=None; cat_name=''
-    eg=cats_data.get('eventGroup',{})
-    for cat in eg.get('offerCategories',[]):
-        for desc in cat.get('offerSubcategoryDescriptors',[]):
-            name_lower=desc.get('name','').lower()
-            if any(kw in name_lower for kw in keywords):
-                cat_id=cat.get('offerCategoryId')
-                subcat_id=desc.get('subcategoryId')
-                cat_name=desc.get('name','')
-                print(f"DK NBA {stat_type}: cat={cat_id} subcat={subcat_id} ({cat_name})")
-                break
-        if cat_id: break
-
-    if not cat_id:
-        print(f"DK NBA {stat_type}: catégorie introuvable. Dispo:")
-        for cat in eg.get('offerCategories',[]):
-            for desc in cat.get('offerSubcategoryDescriptors',[]): print(f"  {desc.get('name','')}")
-        return {},{}
-
-    # Step 2 — Fetch les props
-    data=safe_req_dk(f"{DK_BASE}/leagues/{DK_NBA_LEAGUE}/categories/{cat_id}/subcategories/{subcat_id}")
-    if not data: return {},{}
-
-    # Step 3 — Events (matchups)
-    for event in data.get('eventGroup',{}).get('events',[]):
-        eid=str(event.get('eventId',''))
-        ev[eid]={
-            'home_team': event.get('teamName1','') or event.get('homeTeam',''),
-            'away_team': event.get('teamName2','') or event.get('awayTeam',''),
-            'time':      event.get('startDate','')
-        }
-
-    # Step 4 — Parse les offers
-    for cat in data.get('eventGroup',{}).get('offerCategories',[]):
-        for desc in cat.get('offerSubcategoryDescriptors',[]):
-            if not any(kw in desc.get('name','').lower() for kw in keywords): continue
-            for offer in desc.get('offerSubcategory',{}).get('offers',[]):
-                eid=str(offer.get('eventId',''))
-                player=None; lines=[]
-                for oc in offer.get('outcomes',[]):
-                    p=(oc.get('participant') or oc.get('label') or '').strip()
-                    if p and p not in ('Over','Under','Yes','No'): player=p
-                    btype=oc.get('label','')
-                    if btype not in ('Over','Under'): continue
-                    line_val=oc.get('line') or oc.get('handicap')
-                    try: price=int(str(oc.get('oddsAmerican','-110')).replace('+',''))
-                    except: price=-110
-                    if line_val is not None:
-                        lines.append({'book':'DRAFTKINGS','line':float(line_val),'price':price,'type':btype})
-                if player and lines:
-                    if player not in props: props[player]={'game_id':eid,'lines':[]}
-                    props[player]['lines'].extend(lines)
-
-    print(f"DK NBA {stat_type}: {len(props)} joueurs trouvés")
+    print(f"Odds API: {len(data)} events trouvés pour {odds_sport}")
+    for game in data[:max_games]:
+        gid=game['id']
+        ev[gid]={'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),
+                 'time':game.get('commence_time','')}
+        try:
+            d2=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
+                params={'apiKey':ODDS_API_KEY,'regions':'us','markets':odds_market,'oddsFormat':'american'})
+            if not d2: continue
+            books=d2.get('bookmakers',[])
+            for bk in books:
+                for mk in bk.get('markets',[]):
+                    if mk['key']!=odds_market: continue
+                    for oc in mk.get('outcomes',[]):
+                        player=oc.get('description','').strip()
+                        point=oc.get('point'); btype=oc.get('name','')
+                        if not player or point is None: continue
+                        if player not in props: props[player]={'game_id':gid,'lines':[]}
+                        props[player]['lines'].append({
+                            'book':bk['key'],'line':float(point),
+                            'price':int(oc.get('price',-110)),'type':btype})
+            time.sleep(0.25)
+        except Exception as e:
+            print(f"Odds API event error {gid[:8]}: {e}")
+            continue
+    print(f"Odds API {odds_market}: {len(props)} joueurs trouvés")
     return props,ev
 
 def nba_get_odds(stat_type):
-    """DraftKings en premier, The Odds API en fallback (si plan le supporte un jour)"""
-    props,ev=dk_nba_get_props(stat_type)
-    if props: return props,ev
-    # Fallback Odds API
+    """Direct Odds API — plan $30 supporte player_points/rebounds/assists"""
     cfg=STAT_CONFIG[stat_type]
-    p,e=get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
-    return p,e
+    return get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
 
 # ── NHL ───────────────────────────────────────────────────────────────────────
 def nhl_search_player(name):
@@ -486,7 +437,7 @@ def nhl_get_skater_gamelog(player_id):
     return uniq or None
 
 # ── Tennis ────────────────────────────────────────────────────────────────────
-def tennis_get_aces(player_name,surface=None):
+def tennis_get_aces(player_name, surface=None):
     cache_key=f"tennis_{norm_name(player_name)}_{surface or 'all'}"
     if cache_key in TENNIS_CACHE: return TENNIS_CACHE[cache_key]
     games=[]
@@ -514,39 +465,26 @@ def golf_get_stats(player_name):
     if not DATAGOLF_KEY: return None
     ck=f"golf_{norm_name(player_name)}"
     if ck in GAMELOG_CACHE: return GAMELOG_CACHE[ck]
-    data=safe_req(f"{DATAGOLF_BASE}/preds/player-decompositions",params={'file_format':'json','key':DATAGOLF_KEY,'tour':'pga'})
+    data=safe_req(f"{DATAGOLF_BASE}/preds/player-decompositions",
+        params={'file_format':'json','key':DATAGOLF_KEY,'tour':'pga'})
     if not data: return None
     games=[]
     for p in (data.get('players') or []):
         if names_match(player_name,p.get('player_name','')):
             sg=p.get('sg_total')
-            if sg is not None: games.append({'date':datetime.now().strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
+            if sg is not None:
+                games.append({'date':datetime.now().strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
     if games: GAMELOG_CACHE[ck]=games
     return games or None
 
-# ── Odds API (MLB, Tennis, Golf) ──────────────────────────────────────────────
-def get_odds_props(odds_sport,odds_market,max_games=20):
-    if not ODDS_API_KEY: return {},{}
-    data=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
-    if not data: return {},{}
-    props={}; ev={}
-    for game in data[:max_games]:
-        gid=game['id']
-        ev[gid]={'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),'time':game.get('commence_time','')}
-        try:
-            d2=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",params={'apiKey':ODDS_API_KEY,'regions':'us','markets':odds_market,'oddsFormat':'american'})
-            if not d2: continue
-            for bk in d2.get('bookmakers',[]):
-                for mk in bk.get('markets',[]):
-                    if mk['key']!=odds_market: continue
-                    for oc in mk.get('outcomes',[]):
-                        player=oc.get('description','').strip(); point=oc.get('point'); btype=oc.get('name','')
-                        if not player or point is None: continue
-                        if player not in props: props[player]={'game_id':gid,'lines':[]}
-                        props[player]['lines'].append({'book':bk['key'],'line':float(point),'price':int(oc.get('price',-110)),'type':btype})
-            time.sleep(0.25)
-        except: continue
-    return props,ev
+# ── DraftKings NHL (SOG) ──────────────────────────────────────────────────────
+def safe_req_dk(url, params=None):
+    try:
+        r=requests.get(url,params=params,headers=DK_HEADERS,timeout=15)
+        if r.status_code==200: return r.json()
+        print(f"DK HTTP {r.status_code}: {url[:80]}")
+    except Exception as e: print(f"DK error: {e}")
+    return None
 
 def dk_nhl_get_sog():
     props={}; ev={}
@@ -578,7 +516,8 @@ def dk_nhl_get_sog():
                     line_val=oc.get('line') or oc.get('handicap')
                     try: price=int(str(oc.get('oddsAmerican','-110')).replace('+',''))
                     except: price=-110
-                    if line_val is not None: lines.append({'book':'DRAFTKINGS','line':float(line_val),'price':price,'type':btype})
+                    if line_val is not None:
+                        lines.append({'book':'DRAFTKINGS','line':float(line_val),'price':price,'type':btype})
                 if player and lines:
                     if player not in props: props[player]={'game_id':eid,'lines':[]}
                     props[player]['lines'].extend(lines)
@@ -595,11 +534,19 @@ def nhl_get_odds():
 def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
     cfg=STAT_CONFIG[stat_type]
     return {'player':player,'sport':sport,'stat_type':stat_type,'stat_label':cfg['label'],
-        'game_info':{'home_team':gi.get('home_team',''),'away_team':gi.get('away_team',''),'time':gi.get('time',''),'opponent':opponent,'is_home':is_home},
+        'game_info':{'home_team':gi.get('home_team',''),'away_team':gi.get('away_team',''),
+                     'time':gi.get('time',''),'opponent':opponent,'is_home':is_home},
         'quality':a['quality'],
-        'line_analysis':{'bookmaker_line':line,'bookmaker':best['book'].upper(),'recommendation':a['rec'],'raw_edge':a['raw_edge'],'edge':a['edge'],'over_probability':a['over_p'],'under_probability':a['under_p'],'kelly_criterion':a['kelly']},
-        'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],'std':a['std'],'avg_last_5':a['l5'],'avg_last_10':a['l10'],'consistency':a['cons'],'games_analyzed':a['n'],'over_count':a['over_n'],'under_count':a['under_n'],'r_squared':a['r_sq'],'trend_slope':a['slope']},
-        'statistical_validation':{'normality':a['normality'],'chi_gof':a['chi_gof'],'is_reliable':a['normality']['verdict']!='NON_NORMAL' and (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
+        'line_analysis':{'bookmaker_line':line,'bookmaker':best['book'].upper(),
+            'recommendation':a['rec'],'raw_edge':a['raw_edge'],'edge':a['edge'],
+            'over_probability':a['over_p'],'under_probability':a['under_p'],'kelly_criterion':a['kelly']},
+        'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],
+            'std':a['std'],'avg_last_5':a['l5'],'avg_last_10':a['l10'],'consistency':a['cons'],
+            'games_analyzed':a['n'],'over_count':a['over_n'],'under_count':a['under_n'],
+            'r_squared':a['r_sq'],'trend_slope':a['slope']},
+        'statistical_validation':{'normality':a['normality'],'chi_gof':a['chi_gof'],
+            'is_reliable':a['normality']['verdict']!='NON_NORMAL' and
+                          (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
         'recent_games':a['recent']}
 
 # ╔══════════════════════════════════════════════════════╗
