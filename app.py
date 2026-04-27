@@ -743,6 +743,7 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
         opp['context'] = extra_context
     return opp
 
+
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
 # ║  v3.0: sanity check moyenne vs ligne                ║
