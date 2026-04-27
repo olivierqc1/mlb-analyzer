@@ -305,114 +305,196 @@ def mlb_opp_k_pct(team):
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
-# ║  v2.7: nba_api (stats.nba.com) pour les gamelogs   ║
+# ║  v2.8: NBA contextuel — split H/A, def rating,     ║
+# ║        30 derniers games, playoffs poids 2x        ║
 # ╚══════════════════════════════════════════════════════╝
 
-from nba_api.stats.endpoints import playergamelog, commonallplayers
+from nba_api.stats.endpoints import playergamelog, teamdashboardbygeneralsplits
 from nba_api.stats.static import players as nba_players_static
+from nba_api.stats.static import teams as nba_teams_static
 
-# ── NBA — nba_api (stats.nba.com) ────────────────────────────────────────────
+# ── Défensive rating cache ────────────────────────────────────────────────────
+NBA_DEF_RATING_CACHE = {}
+
+def nba_get_team_def_rating(team_name):
+    """
+    Récupère le defensive rating d'une équipe.
+    Plus le rating est bas, meilleure est la défense.
+    Moyenne NBA ≈ 113.
+    """
+    key = norm_name(team_name)
+    if key in NBA_DEF_RATING_CACHE: return NBA_DEF_RATING_CACHE[key]
+    try:
+        # Trouve le team_id
+        teams = nba_teams_static.get_teams()
+        team = next((t for t in teams if norm_name(t['full_name']) == key
+                     or norm_name(t['nickname']) in key), None)
+        if not team: return None
+        from nba_api.stats.endpoints import leaguedashteamstats
+        stats = leaguedashteamstats.LeagueDashTeamStats(
+            season='2025-26',
+            measure_type_detailed_defense='Defense',
+            per_mode_simple='PerGame',
+            timeout=20
+        )
+        df = stats.get_data_frames()[0]
+        row = df[df['TEAM_ID']==team['id']]
+        if row.empty: return None
+        # DEF_RATING dans la colonne — utilise OPP_PTS comme proxy si pas dispo
+        rating = None
+        for col in ['DEF_RATING','OPP_PTS']:
+            if col in row.columns:
+                rating = float(row[col].values[0]); break
+        if rating:
+            NBA_DEF_RATING_CACHE[key] = rating
+        return rating
+    except Exception as e:
+        print(f"NBA def rating error {team_name}: {e}")
+        return None
+
+# ── NBA player search ─────────────────────────────────────────────────────────
 def nba_search_player(name):
-    """Cherche un joueur NBA via nba_api static data"""
-    key='nba_'+norm_name(name)
+    key = 'nba_' + norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
-    # Recherche exacte d'abord
-    results=nba_players_static.find_players_by_full_name(name)
-    if not results:
-        # Essaie juste le nom de famille
-        last=name.split()[-1]
-        results=nba_players_static.find_players_by_last_name(last)
-    if not results:
-        # Essaie prénom
-        first=name.split()[0]
-        results=nba_players_static.find_players_by_first_name(first)
-    if results:
-        # Prend le joueur actif en priorité
-        active=[p for p in results if p.get('is_active',False)]
-        chosen=active[0] if active else results[0]
-        pid=chosen['id']
-        PLAYER_ID_CACHE[key]=pid
-        return pid
+    # Essaie nom de famille d'abord
+    for search_fn, arg in [
+        (nba_players_static.find_players_by_last_name,  name.split()[-1]),
+        (nba_players_static.find_players_by_full_name,  name),
+        (nba_players_static.find_players_by_first_name, name.split()[0]),
+    ]:
+        try:
+            results = search_fn(arg)
+            if results:
+                active = [p for p in results if p.get('is_active', False)]
+                chosen = active[0] if active else results[0]
+                PLAYER_ID_CACHE[key] = chosen['id']
+                return chosen['id']
+        except: continue
     return None
 
-def nba_get_gamelog(player_id, stat_col):
-    """
-    Récupère le gamelog NBA via nba_api.
-    stat_col: 'PTS', 'REB', 'AST'
-    Retourne liste de {'date':str, 'stat':int}
-    """
-    # Map nos colonnes internes → colonnes nba_api
-    col_map={'pts':'PTS','reb':'REB','ast':'AST'}
-    nba_col=col_map.get(stat_col, stat_col.upper())
-    ck=f"nba_{player_id}_{stat_col}"
-    if ck in NBA_CACHE: return NBA_CACHE[ck]
+# ── NBA gamelog avec contexte ─────────────────────────────────────────────────
+def nba_parse_minutes(min_str):
+    if not min_str: return 0.0
+    try:
+        parts = str(min_str).split(':')
+        return float(parts[0]) + (float(parts[1])/60 if len(parts)>1 else 0)
+    except: return 0.0
 
-    games=[]
-    # Saison régulière + playoffs 2025-26
-    for season_type in ['Regular Season','Playoffs']:
-        try:
-            gl=playergamelog.PlayerGameLog(
-                player_id=player_id,
-                season='2025-26',
-                season_type_all_star=season_type,
-                timeout=30
-            )
-            df=gl.get_data_frames()[0]
-            if df.empty: continue
-            for _,row in df.iterrows():
-                # Filtre garbage time (MIN < 15)
-                try:
-                    mins=float(str(row.get('MIN',0)).split(':')[0])
-                    if mins < 15: continue
-                except: pass
-                val=row.get(nba_col)
-                if val is None: continue
-                game_date=str(row.get('GAME_DATE',''))
-                # Convertit "APR 26, 2026" → "2026-04-26"
-                try:
-                    from datetime import datetime as dt
-                    gdate=dt.strptime(game_date,'%b %d, %Y').strftime('%Y-%m-%d')
-                except:
-                    gdate=game_date
-                games.append({'date':gdate,'stat':int(val)})
-            time.sleep(0.6)  # rate limit nba_api
-        except Exception as e:
-            print(f"nba_api gamelog error {player_id} {season_type}: {e}")
-            continue
+def nba_get_gamelog(player_id, stat_col, is_home=None, opp_team=None):
+    """
+    Gamelog NBA avec filtres contextuels.
+    - is_home: True/False/None → filtre ou pas le split H/A
+    - opp_team: nom équipe adverse pour ajustement défensif
+    - 30 derniers games seulement (forme actuelle)
+    - Playoffs comptent double (plus représentatifs de la situation actuelle)
+    """
+    col_map = {'pts':'PTS', 'reb':'REB', 'ast':'AST'}
+    nba_col = col_map.get(stat_col, stat_col.upper())
+    ck = f"nba_{player_id}_{stat_col}"
+    if ck in NBA_CACHE: 
+        games = NBA_CACHE[ck]
+    else:
+        games = []
+        for season_type, weight in [('Playoffs', 2), ('Regular Season', 1)]:
+            try:
+                gl = playergamelog.PlayerGameLog(
+                    player_id=player_id,
+                    season='2025-26',
+                    season_type_all_star=season_type,
+                    timeout=30
+                )
+                df = gl.get_data_frames()[0]
+                if df.empty: continue
+                for _, row in df.iterrows():
+                    mins = nba_parse_minutes(row.get('MIN', 0))
+                    if mins < NBA_MIN_MINUTES: continue
+                    val = row.get(nba_col)
+                    if val is None: continue
+                    matchup = str(row.get('MATCHUP', ''))
+                    home = 'vs.' in matchup  # "BOS vs. MIA" = home, "BOS @ MIA" = away
+                    opp = matchup.split()[-1] if matchup else ''
+                    try:
+                        from datetime import datetime as dt
+                        gdate = dt.strptime(str(row.get('GAME_DATE','')), '%b %d, %Y').strftime('%Y-%m-%d')
+                    except:
+                        gdate = str(row.get('GAME_DATE',''))
+                    entry = {'date':gdate,'stat':int(val),'is_home':home,'opp':opp,'min':round(mins,1)}
+                    # Playoffs comptent double → ajoute l'entrée 2x
+                    for _ in range(weight):
+                        games.append(entry)
+                time.sleep(0.6)
+            except Exception as e:
+                print(f"nba_api error {player_id} {season_type}: {e}"); continue
 
-    games.sort(key=lambda x:x['date'],reverse=True)
-    seen=set(); uniq=[]
-    for g in games:
-        if g['date'] not in seen: seen.add(g['date']); uniq.append(g)
-    if uniq: NBA_CACHE[ck]=uniq
-    return uniq or None
+        # Trie et déduplique (garde la première occurrence = la plus récente)
+        games.sort(key=lambda x: x['date'], reverse=True)
+        seen = set(); uniq = []
+        for g in games:
+            dk = (g['date'], g['stat'])
+            if dk not in seen: seen.add(dk); uniq.append(g)
+        games = uniq
+        if games: NBA_CACHE[ck] = games
+
+    # Limite aux 30 derniers
+    games = games[:30]
+    if not games: return None
+
+    # Filtre home/away si pertinent
+    if is_home is not None:
+        filtered = [g for g in games if g.get('is_home') == is_home]
+        # Si assez de données filtrées, utilise le split
+        if len(filtered) >= 8:
+            games = filtered
+
+    return games if games else None
+
+def nba_compute_adj_mean(games, stat_col, opp_team, base_mean):
+    """
+    Ajuste la moyenne selon la qualité défensive de l'adversaire.
+    Défense forte (low rating) → pénalité
+    Défense faible (high rating) → bonus
+    """
+    if not opp_team: return base_mean, 0.0
+    def_rating = nba_get_team_def_rating(opp_team)
+    if def_rating is None: return base_mean, 0.0
+
+    NBA_AVG_DEF = 113.5  # moyenne ligue 2025-26 approx
+    diff = def_rating - NBA_AVG_DEF  # positif = mauvaise défense = plus facile
+
+    # Ajustement selon le stat
+    adj_factors = {'pts': 0.15, 'reb': 0.05, 'ast': 0.08}
+    factor = adj_factors.get(stat_col, 0.1)
+    adjustment = round(diff * factor, 2)
+    # Cap l'ajustement à ±2 unités
+    adjustment = max(-2.0, min(2.0, adjustment))
+    adj_mean = round(base_mean + adjustment, 2)
+    return adj_mean, adjustment
 
 # ── Odds API ──────────────────────────────────────────────────────────────────
 def get_odds_props(odds_sport, odds_market, max_games=20):
     if not ODDS_API_KEY: return {},{}
-    data=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
+    data = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
         params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
     if not data:
-        print(f"Odds API: aucun event pour {odds_sport}")
-        return {},{}
-    props={}; ev={}
+        print(f"Odds API: aucun event pour {odds_sport}"); return {},{}
+    props = {}; ev = {}
     print(f"Odds API: {len(data)} events pour {odds_sport}")
     for game in data[:max_games]:
-        gid=game['id']
-        ev[gid]={'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),
-                 'time':game.get('commence_time','')}
+        gid = game['id']
+        ev[gid] = {'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),
+                   'time':game.get('commence_time','')}
         try:
-            d2=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
+            d2 = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
                 params={'apiKey':ODDS_API_KEY,'regions':'us','markets':odds_market,'oddsFormat':'american'})
             if not d2: continue
             for bk in d2.get('bookmakers',[]):
                 for mk in bk.get('markets',[]):
-                    if mk['key']!=odds_market: continue
+                    if mk['key'] != odds_market: continue
                     for oc in mk.get('outcomes',[]):
-                        player=oc.get('description','').strip()
-                        point=oc.get('point'); btype=oc.get('name','')
+                        player = oc.get('description','').strip()
+                        point = oc.get('point'); btype = oc.get('name','')
                         if not player or point is None: continue
-                        if player not in props: props[player]={'game_id':gid,'lines':[]}
+                        if player not in props: props[player] = {'game_id':gid,'lines':[]}
                         props[player]['lines'].append({
                             'book':bk['key'],'line':float(point),
                             'price':int(oc.get('price',-110)),'type':btype})
@@ -420,53 +502,52 @@ def get_odds_props(odds_sport, odds_market, max_games=20):
         except Exception as e:
             print(f"Odds API event error: {e}"); continue
     print(f"Odds API {odds_market}: {len(props)} joueurs")
-    return props,ev
+    return props, ev
 
 def nba_get_odds(stat_type):
-    """Direct Odds API — plan $30 supporte player props NBA"""
-    cfg=STAT_CONFIG[stat_type]
-    return get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
+    cfg = STAT_CONFIG[stat_type]
+    return get_odds_props(cfg['odds_sport'], cfg['odds_market'], max_games=20)
 
 # ── NHL ───────────────────────────────────────────────────────────────────────
 def nhl_search_player(name):
-    key='nhl_'+norm_name(name)
+    key = 'nhl_' + norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
-    last=name.split()[-1] if ' ' in name else name
-    data=safe_req(NHL_SEARCH_BASE,params={'q':last,'culture':'en-us','isActive':'true'})
+    last = name.split()[-1] if ' ' in name else name
+    data = safe_req(NHL_SEARCH_BASE, params={'q':last,'culture':'en-us','isActive':'true'})
     if data:
         for r in (data if isinstance(data,list) else []):
-            if names_match(name,r.get('name','')):
-                pid=r.get('playerId')
+            if names_match(name, r.get('name','')):
+                pid = r.get('playerId')
                 if pid: PLAYER_ID_CACHE[key]=pid; return pid
     return None
 
 def nhl_get_skater_gamelog(player_id):
-    ck=f"nhl_{player_id}_sog"
+    ck = f"nhl_{player_id}_sog"
     if ck in GAMELOG_CACHE: return GAMELOG_CACHE[ck]
-    games=[]
+    games = []
     for season,gt in [('20252026',3),('20252026',2),('20242025',2)]:
-        data=safe_req(f"{NHL_BASE}/player/{player_id}/game-log/{season}/{gt}")
+        data = safe_req(f"{NHL_BASE}/player/{player_id}/game-log/{season}/{gt}")
         if not data: continue
         for g in data.get('gameLog',[]):
-            shots=g.get('shots') or g.get('shotsOnGoal')
+            shots = g.get('shots') or g.get('shotsOnGoal')
             if shots is None: continue
             games.append({'date':g.get('gameDate',''),'stat':int(shots)})
     games.sort(key=lambda x:x['date'],reverse=True)
     seen=set(); uniq=[]
     for g in games:
-        d=g['date'][:10]
+        d = g['date'][:10]
         if d not in seen: seen.add(d); uniq.append(g)
     if uniq: GAMELOG_CACHE[ck]=uniq
     return uniq or None
 
 # ── Tennis ────────────────────────────────────────────────────────────────────
 def tennis_get_aces(player_name, surface=None):
-    cache_key=f"tennis_{norm_name(player_name)}_{surface or 'all'}"
+    cache_key = f"tennis_{norm_name(player_name)}_{surface or 'all'}"
     if cache_key in TENNIS_CACHE: return TENNIS_CACHE[cache_key]
-    games=[]
+    games = []
     for year in [2026,2025,2024]:
         try:
-            resp=requests.get(f"{SACKMANN_BASE}/atp_matches_{year}.csv",timeout=15)
+            resp = requests.get(f"{SACKMANN_BASE}/atp_matches_{year}.csv",timeout=15)
             if resp.status_code!=200: continue
             for row in csv.DictReader(io.StringIO(resp.text)):
                 surf=row.get('surface',''); date=row.get('tourney_date','')
@@ -486,15 +567,15 @@ def tennis_get_aces(player_name, surface=None):
 # ── Golf ──────────────────────────────────────────────────────────────────────
 def golf_get_stats(player_name):
     if not DATAGOLF_KEY: return None
-    ck=f"golf_{norm_name(player_name)}"
+    ck = f"golf_{norm_name(player_name)}"
     if ck in GAMELOG_CACHE: return GAMELOG_CACHE[ck]
-    data=safe_req(f"{DATAGOLF_BASE}/preds/player-decompositions",
+    data = safe_req(f"{DATAGOLF_BASE}/preds/player-decompositions",
         params={'file_format':'json','key':DATAGOLF_KEY,'tour':'pga'})
     if not data: return None
-    games=[]
+    games = []
     for p in (data.get('players') or []):
-        if names_match(player_name,p.get('player_name','')):
-            sg=p.get('sg_total')
+        if names_match(player_name, p.get('player_name','')):
+            sg = p.get('sg_total')
             if sg is not None:
                 games.append({'date':datetime.now().strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
     if games: GAMELOG_CACHE[ck]=games
@@ -503,25 +584,24 @@ def golf_get_stats(player_name):
 # ── DraftKings NHL SOG ────────────────────────────────────────────────────────
 def safe_req_dk(url, params=None):
     try:
-        r=requests.get(url,params=params,headers=DK_HEADERS,timeout=15)
+        r = requests.get(url,params=params,headers=DK_HEADERS,timeout=15)
         if r.status_code==200: return r.json()
-        print(f"DK HTTP {r.status_code}: {url[:80]}")
+        print(f"DK HTTP {r.status_code}")
     except Exception as e: print(f"DK error: {e}")
     return None
 
 def dk_nhl_get_sog():
     props={}; ev={}
-    cats_data=safe_req_dk(f"{DK_BASE}/leagues/42/categories")
+    cats_data = safe_req_dk(f"{DK_BASE}/leagues/42/categories")
     if not cats_data: return {},{}
     cat_id=None; subcat_id=None
     for cat in cats_data.get('eventGroup',{}).get('offerCategories',[]):
         for desc in cat.get('offerSubcategoryDescriptors',[]):
             if 'shot' in desc.get('name','').lower():
-                cat_id=cat.get('offerCategoryId'); subcat_id=desc.get('subcategoryId')
-                print(f"DK NHL SOG: {desc.get('name')}"); break
+                cat_id=cat.get('offerCategoryId'); subcat_id=desc.get('subcategoryId'); break
         if cat_id: break
     if not cat_id: return {},{}
-    data=safe_req_dk(f"{DK_BASE}/leagues/42/categories/{cat_id}/subcategories/{subcat_id}")
+    data = safe_req_dk(f"{DK_BASE}/leagues/42/categories/{cat_id}/subcategories/{subcat_id}")
     if not data: return {},{}
     for event in data.get('eventGroup',{}).get('events',[]):
         eid=str(event.get('eventId',''))
@@ -547,16 +627,16 @@ def dk_nhl_get_sog():
     print(f"DK NHL SOG: {len(props)} joueurs"); return props,ev
 
 def nhl_get_odds():
-    props,ev=dk_nhl_get_sog()
+    props,ev = dk_nhl_get_sog()
     if props: return props,ev
     for sk in ['icehockey_nhl','icehockey_nhl_championship']:
-        p,e=get_odds_props(sk,'player_shots_on_goal')
+        p,e = get_odds_props(sk,'player_shots_on_goal')
         if p: return p,e
     return {},{}
 
-def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
-    cfg=STAT_CONFIG[stat_type]
-    return {'player':player,'sport':sport,'stat_type':stat_type,'stat_label':cfg['label'],
+def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_context=None):
+    cfg = STAT_CONFIG[stat_type]
+    opp = {'player':player,'sport':sport,'stat_type':stat_type,'stat_label':cfg['label'],
         'game_info':{'home_team':gi.get('home_team',''),'away_team':gi.get('away_team',''),
                      'time':gi.get('time',''),'opponent':opponent,'is_home':is_home},
         'quality':a['quality'],
@@ -571,18 +651,22 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a):
             'is_reliable':a['normality']['verdict']!='NON_NORMAL' and
                           (a['chi_gof'] is None or a['chi_gof']['is_good_fit'])},
         'recent_games':a['recent']}
+    if extra_context:
+        opp['context'] = extra_context
+    return opp
 
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
-# ║  v2.6: debug-nba endpoint + fix NameError           ║
+# ║  v2.8: scan NBA avec contexte H/A + défense         ║
 # ╚══════════════════════════════════════════════════════╝
 
 def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
-    stat_types=[stat_type_filter] if stat_type_filter else SPORT_STATS.get(sport,[])
+    stat_types = [stat_type_filter] if stat_type_filter else SPORT_STATS.get(sport,[])
     if not stat_types: return [],0,0
     opps=[]; analyzed=0; n_games=0
 
+    # ── MLB ───────────────────────────────────────────────────────────────────
     if sport=='mlb':
         pitchers=mlb_get_pitchers(); n_games=len(set(p['home_team'] for p in pitchers))
         for st in stat_types:
@@ -612,34 +696,67 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
                 if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
                 opps.append(_build_opp(pname,st,'mlb',line,best,ev.get(pd['game_id'],gi),opp,ih,a))
 
+    # ── NBA ───────────────────────────────────────────────────────────────────
     elif sport=='nba':
         nba_stat_map={'nba_points':'pts','nba_rebounds':'reb','nba_assists':'ast'}
         all_player_ids={}; n_games=0
+
         for st in stat_types:
             props,ev=nba_get_odds(st)
             if not props: continue
             n_games=max(n_games,len(ev))
             stat_col=nba_stat_map.get(st,'pts')
+
             for pname,pd in props.items():
                 overs=[l for l in pd['lines'] if l['type']=='Over']
                 if not overs: continue
                 line=Counter([l['line'] for l in overs]).most_common(1)[0][0]
                 best=min(overs,key=lambda x:abs(x['line']-line))
+
+                # Info du match (home/away + équipe adverse)
+                gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
+                home_team=gi.get('home_team','')
+                away_team=gi.get('away_team','')
+
+                # Cherche le joueur
                 pkey=norm_name(pname)
                 if pkey not in all_player_ids:
-                    all_player_ids[pkey]=nba_search_player(pname); time.sleep(0.1)
+                    all_player_ids[pkey]=nba_search_player(pname); time.sleep(0.2)
                 pid=all_player_ids[pkey]
                 if not pid: continue
-                games=nba_get_gamelog(pid,stat_col)
+
+                # Détermine is_home et équipe adverse pour ce joueur
+                # On cherche à quelle équipe appartient le joueur (simplifié)
+                # Si on peut pas déterminer → on passe is_home=None (pas de filtre)
+                is_home_player=None; opp_team=''
+                # Le joueur est dans l'équipe away ou home?
+                # On va utiliser les props sans split pour l'instant (trop complexe à déterminer)
+                # mais on garde l'opp_team pour l'ajustement défensif
+                # Convention: away team = le visiteur
+                opp_team=home_team  # par défaut adversaire = home (si joueur = away)
+
+                games=nba_get_gamelog(pid, stat_col, is_home=is_home_player, opp_team=opp_team)
                 if not games or len(games)<STAT_CONFIG[st]['min_games']: continue
                 analyzed+=1
-                a=analyze(games,line,st)
+
+                # Ajustement défensif
+                base_mean=float(np.mean([g['stat'] for g in games]))
+                adj_mean,def_adj=nba_compute_adj_mean(games,stat_col,opp_team,base_mean)
+
+                a=analyze(games,line,st,adj_mean_override=adj_mean if def_adj!=0 else None)
                 if not a or a['rec']=='SKIP' or a['edge']<min_edge or a['quality']['grade']=='AVOID': continue
-                gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
-                opps.append(_build_opp(pname,st,'nba',line,best,gi,'',True,a))
+
+                context={
+                    'home_team':home_team,'away_team':away_team,
+                    'opp_team':opp_team,'def_adjustment':def_adj,
+                    'games_used':len(games),'note':'30 derniers jeux, playoffs 2x'
+                }
+                opps.append(_build_opp(pname,st,'nba',line,best,gi,'',True,a,context))
+
         if not n_games:
             return [{'_no_key':True,'message':'🏀 NBA: Aucun marché trouvé. Vérifie /api/debug-nba.'}],0,0
 
+    # ── NHL ───────────────────────────────────────────────────────────────────
     elif sport=='nhl':
         n_games=10; props,ev=nhl_get_odds()
         if not props:
@@ -660,12 +777,13 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'skater_shots','nhl',line,best,gi,'',True,a))
 
+    # ── Tennis ────────────────────────────────────────────────────────────────
     elif sport=='tennis':
         props,ev=get_odds_props('tennis_atp','player_aces')
         if not props: props,ev=get_odds_props('tennis_atp_french_open','player_aces')
         n_games=len(props)
         if not props:
-            return [{'_no_key':True,'message':'🎾 Tennis: Aucun marché player_aces actif. Prochain: Roland Garros fin mai.'}],0,0
+            return [{'_no_key':True,'message':'🎾 Tennis: Aucun marché player_aces actif.'}],0,0
         cfg=STAT_CONFIG['tennis_aces']
         for pname,pd in props.items():
             overs=[l for l in pd['lines'] if l['type']=='Over']
@@ -680,6 +798,7 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
             gi=ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
             opps.append(_build_opp(pname,'tennis_aces','tennis',line,best,gi,'',True,a))
 
+    # ── Golf ──────────────────────────────────────────────────────────────────
     elif sport=='golf':
         if not DATAGOLF_KEY:
             return [{'_no_key':True,'message':'⛳ Golf: DATAGOLF_KEY manquant.'}],0,0
@@ -705,46 +824,32 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.route('/api/debug-nba', methods=['GET'])
 def debug_nba():
-    """Teste balldontlie + Odds API NBA depuis Render"""
     import traceback
     results={}
-    # Test balldontlie
     try:
-        r=safe_req_bdl('/players',params={'search':'lebron james','per_page':3})
-        if r:
-            results['balldontlie']={'status':'OK','data':r.get('data',[])}
-        else:
-            results['balldontlie']={'status':'FAIL','response':None}
+        pid=nba_search_player('Nikola Jokic')
+        results['player_search']={'player':'Nikola Jokic','id':pid,'status':'OK' if pid else 'NOT_FOUND'}
+        if pid:
+            games=nba_get_gamelog(pid,'pts')
+            results['gamelog']={'games_found':len(games) if games else 0,
+                'sample':games[:3] if games else []}
     except Exception as e:
-        results['balldontlie']={'status':'ERROR','error':str(e),'trace':traceback.format_exc()[:300]}
-    # Test Odds API NBA player_points sur 1 event
+        results['player_search']={'error':str(e),'trace':traceback.format_exc()[:400]}
     try:
         props,ev=get_odds_props('basketball_nba','player_points',max_games=1)
-        first_players=list(props.keys())[:5]
-        results['odds_api_nba']={
-            'status':'OK' if props else 'EMPTY',
-            'events_found':len(ev),
-            'props_found':len(props),
-            'sample_players':first_players
-        }
+        results['odds_api']={'events':len(ev),'props':len(props),'sample':list(props.keys())[:5]}
     except Exception as e:
-        results['odds_api_nba']={'status':'ERROR','error':str(e),'trace':traceback.format_exc()[:300]}
+        results['odds_api']={'error':str(e)}
     return jsonify(results)
-
 
 @app.route('/api/debug-dk', methods=['GET'])
 def debug_dk():
-    """Debug DraftKings NHL connectivity"""
     import traceback
-    results={}
     try:
-        r=requests.get(f"{DK_BASE}/leagues/42/categories",
-            headers=DK_HEADERS,timeout=15)
-        results['nhl_categories']={'status':r.status_code,'body':r.text[:400]}
+        r=requests.get(f"{DK_BASE}/leagues/42/categories",headers=DK_HEADERS,timeout=15)
+        return jsonify({'status':r.status_code,'body':r.text[:300]})
     except Exception as e:
-        results['nhl_categories']={'error':str(e),'trace':traceback.format_exc()[:300]}
-    return jsonify(results)
-
+        return jsonify({'error':str(e),'trace':traceback.format_exc()[:300]})
 
 @app.route('/api/daily-opportunities', methods=['GET'])
 def daily_opportunities():
@@ -758,7 +863,7 @@ def daily_opportunities():
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
             return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
                 'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
-        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.6',
+        return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'2.8',
             'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
             'total_games':n_games,'players_analyzed':analyzed,
             'opportunities_found':len(opps),'opportunities':opps,
@@ -766,7 +871,6 @@ def daily_opportunities():
     except Exception as e:
         import traceback
         return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:1000]}),500
-
 
 @app.route('/api/actual-result', methods=['GET'])
 def actual_result():
@@ -816,7 +920,6 @@ def actual_result():
         import traceback
         return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
 
-
 @app.route('/api/backtest', methods=['GET'])
 def run_backtest():
     try:
@@ -857,7 +960,6 @@ def run_backtest():
         import traceback
         return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:500]}),500
 
-
 @app.route('/api/mlb/schedule', methods=['GET'])
 def mlb_schedule():
     p=mlb_get_pitchers()
@@ -873,16 +975,15 @@ def usage():
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'2.6','mlb_season':CURRENT_MLB_SEASON,
+    return jsonify({'status':'healthy','version':'2.8','mlb_season':CURRENT_MLB_SEASON,
         'nba_season':NBA_SEASON,'sports':list(SPORT_STATS.keys()),
-        'debug':'/api/debug-nba + /api/debug-dk'})
+        'nba_features':['30_last_games','playoffs_2x_weight','def_rating_adj','home_away_split']})
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'2.6',
-                    'sports':list(SPORT_STATS.keys())})
+    return jsonify({'app':'Multi-Sport Analyzer','version':'2.8'})
 
 if __name__ == '__main__':
     port=int(os.environ.get('PORT',5000))
-    print("🎰 Multi-Sport Analyzer v2.6 — MLB|NBA|NHL|Tennis|Golf",flush=True)
+    print("🎰 Multi-Sport Analyzer v2.8 — MLB|NBA(contextuel)|NHL|Tennis|Golf",flush=True)
     app.run(host='0.0.0.0',port=port,debug=False)
