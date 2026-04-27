@@ -8,8 +8,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, numpy as np, os, math, time, re, io, csv
 from scipy import stats as scipy_stats
-from datetime import datetime, timezone, timedelta
-BCN_TZ = timezone(timedelta(hours=2))  # UTC+2 Barcelona
+from datetime import datetime
 from collections import Counter
 
 app = Flask(__name__)
@@ -30,7 +29,7 @@ DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
 NBA_SEASON         = 2025   # 2024 = saison 2024-25
-NBA_MIN_MINUTES    = 25     # ignore garbage time + load management
+NBA_MIN_MINUTES    = 20     # ignore garbage time
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
 TEAM_STATS_CACHE={}; TENNIS_CACHE={}; NBA_CACHE={}
