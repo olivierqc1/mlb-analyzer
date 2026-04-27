@@ -303,59 +303,83 @@ def mlb_opp_k_pct(team):
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
 
 
-
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
-# ║  v2.6: NBA → direct Odds API (plan $30 supporte)   ║
+# ║  v2.7: nba_api (stats.nba.com) pour les gamelogs   ║
 # ╚══════════════════════════════════════════════════════╝
 
-# ── NBA — balldontlie.io ──────────────────────────────────────────────────────
+from nba_api.stats.endpoints import playergamelog, commonallplayers
+from nba_api.stats.static import players as nba_players_static
+
+# ── NBA — nba_api (stats.nba.com) ────────────────────────────────────────────
 def nba_search_player(name):
+    """Cherche un joueur NBA via nba_api static data"""
     key='nba_'+norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
-    for search_term in [name, name.split()[-1]]:
-        data=safe_req_bdl('/players',params={'search':search_term,'per_page':25})
-        if not data: continue
-        for p in data.get('data',[]):
-            full=f"{p.get('first_name','')} {p.get('last_name','')}".strip()
-            if names_match(name,full):
-                PLAYER_ID_CACHE[key]=p['id']; return p['id']
+    # Recherche exacte d'abord
+    results=nba_players_static.find_players_by_full_name(name)
+    if not results:
+        # Essaie juste le nom de famille
+        last=name.split()[-1]
+        results=nba_players_static.find_players_by_last_name(last)
+    if not results:
+        # Essaie prénom
+        first=name.split()[0]
+        results=nba_players_static.find_players_by_first_name(first)
+    if results:
+        # Prend le joueur actif en priorité
+        active=[p for p in results if p.get('is_active',False)]
+        chosen=active[0] if active else results[0]
+        pid=chosen['id']
+        PLAYER_ID_CACHE[key]=pid
+        return pid
     return None
 
-def nba_parse_minutes(min_str):
-    if not min_str: return 0.0
-    try:
-        parts=str(min_str).split(':')
-        return float(parts[0])+(float(parts[1])/60 if len(parts)>1 else 0)
-    except: return 0.0
-
 def nba_get_gamelog(player_id, stat_col):
+    """
+    Récupère le gamelog NBA via nba_api.
+    stat_col: 'PTS', 'REB', 'AST'
+    Retourne liste de {'date':str, 'stat':int}
+    """
+    # Map nos colonnes internes → colonnes nba_api
+    col_map={'pts':'PTS','reb':'REB','ast':'AST'}
+    nba_col=col_map.get(stat_col, stat_col.upper())
     ck=f"nba_{player_id}_{stat_col}"
     if ck in NBA_CACHE: return NBA_CACHE[ck]
-    games=[]; cursor=None
-    for _ in range(5):
-        params={'player_ids[]':player_id,'seasons[]':NBA_SEASON,'per_page':100,'postseason':False}
-        if cursor: params['cursor']=cursor
-        data=safe_req_bdl('/stats',params=params)
-        if not data: break
-        for g in data.get('data',[]):
-            if nba_parse_minutes(g.get('min')) < NBA_MIN_MINUTES: continue
-            val=g.get(stat_col)
-            if val is None: continue
-            gdate=g.get('game',{}).get('date','')[:10] if g.get('game') else ''
-            games.append({'date':gdate,'stat':int(val)})
-        cursor=data.get('meta',{}).get('next_cursor')
-        if not cursor: break
-        time.sleep(0.2)
-    # Playoffs
-    data_po=safe_req_bdl('/stats',params={'player_ids[]':player_id,'seasons[]':NBA_SEASON,'per_page':100,'postseason':True})
-    if data_po:
-        for g in data_po.get('data',[]):
-            if nba_parse_minutes(g.get('min')) < NBA_MIN_MINUTES: continue
-            val=g.get(stat_col)
-            if val is None: continue
-            gdate=g.get('game',{}).get('date','')[:10] if g.get('game') else ''
-            games.append({'date':gdate,'stat':int(val)})
+
+    games=[]
+    # Saison régulière + playoffs 2025-26
+    for season_type in ['Regular Season','Playoffs']:
+        try:
+            gl=playergamelog.PlayerGameLog(
+                player_id=player_id,
+                season='2025-26',
+                season_type_all_star=season_type,
+                timeout=30
+            )
+            df=gl.get_data_frames()[0]
+            if df.empty: continue
+            for _,row in df.iterrows():
+                # Filtre garbage time (MIN < 15)
+                try:
+                    mins=float(str(row.get('MIN',0)).split(':')[0])
+                    if mins < 15: continue
+                except: pass
+                val=row.get(nba_col)
+                if val is None: continue
+                game_date=str(row.get('GAME_DATE',''))
+                # Convertit "APR 26, 2026" → "2026-04-26"
+                try:
+                    from datetime import datetime as dt
+                    gdate=dt.strptime(game_date,'%b %d, %Y').strftime('%Y-%m-%d')
+                except:
+                    gdate=game_date
+                games.append({'date':gdate,'stat':int(val)})
+            time.sleep(0.6)  # rate limit nba_api
+        except Exception as e:
+            print(f"nba_api gamelog error {player_id} {season_type}: {e}")
+            continue
+
     games.sort(key=lambda x:x['date'],reverse=True)
     seen=set(); uniq=[]
     for g in games:
@@ -366,14 +390,13 @@ def nba_get_gamelog(player_id, stat_col):
 # ── Odds API ──────────────────────────────────────────────────────────────────
 def get_odds_props(odds_sport, odds_market, max_games=20):
     if not ODDS_API_KEY: return {},{}
-    # Step 1: récupère les events
     data=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
         params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
     if not data:
         print(f"Odds API: aucun event pour {odds_sport}")
         return {},{}
     props={}; ev={}
-    print(f"Odds API: {len(data)} events trouvés pour {odds_sport}")
+    print(f"Odds API: {len(data)} events pour {odds_sport}")
     for game in data[:max_games]:
         gid=game['id']
         ev[gid]={'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),
@@ -382,8 +405,7 @@ def get_odds_props(odds_sport, odds_market, max_games=20):
             d2=safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
                 params={'apiKey':ODDS_API_KEY,'regions':'us','markets':odds_market,'oddsFormat':'american'})
             if not d2: continue
-            books=d2.get('bookmakers',[])
-            for bk in books:
+            for bk in d2.get('bookmakers',[]):
                 for mk in bk.get('markets',[]):
                     if mk['key']!=odds_market: continue
                     for oc in mk.get('outcomes',[]):
@@ -396,13 +418,12 @@ def get_odds_props(odds_sport, odds_market, max_games=20):
                             'price':int(oc.get('price',-110)),'type':btype})
             time.sleep(0.25)
         except Exception as e:
-            print(f"Odds API event error {gid[:8]}: {e}")
-            continue
-    print(f"Odds API {odds_market}: {len(props)} joueurs trouvés")
+            print(f"Odds API event error: {e}"); continue
+    print(f"Odds API {odds_market}: {len(props)} joueurs")
     return props,ev
 
 def nba_get_odds(stat_type):
-    """Direct Odds API — plan $30 supporte player_points/rebounds/assists"""
+    """Direct Odds API — plan $30 supporte player props NBA"""
     cfg=STAT_CONFIG[stat_type]
     return get_odds_props(cfg['odds_sport'],cfg['odds_market'],max_games=20)
 
@@ -479,7 +500,7 @@ def golf_get_stats(player_name):
     if games: GAMELOG_CACHE[ck]=games
     return games or None
 
-# ── DraftKings NHL (SOG) ──────────────────────────────────────────────────────
+# ── DraftKings NHL SOG ────────────────────────────────────────────────────────
 def safe_req_dk(url, params=None):
     try:
         r=requests.get(url,params=params,headers=DK_HEADERS,timeout=15)
