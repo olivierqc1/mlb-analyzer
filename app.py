@@ -28,7 +28,7 @@ DK_BASE            = "https://sportsbook.draftkings.com/api/odds/v1"
 DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36','Accept':'application/json','Referer':'https://sportsbook.draftkings.com/'}
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
-NBA_SEASON         = 2025   # 2024 = saison 2024-25
+NBA_SEASON         = 2025    # 2024 = saison 2024-25
 NBA_MIN_MINUTES    = 20     # ignore garbage time
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
