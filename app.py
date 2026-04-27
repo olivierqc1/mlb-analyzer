@@ -8,7 +8,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, numpy as np, os, math, time, re, io, csv
 from scipy import stats as scipy_stats
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+BCN_TZ = timezone(timedelta(hours=2))  # UTC+2 Barcelona
 from collections import Counter
 
 app = Flask(__name__)
@@ -29,7 +30,7 @@ DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
 NBA_SEASON         = 2025   # 2024 = saison 2024-25
-NBA_MIN_MINUTES    = 20     # ignore garbage time
+NBA_MIN_MINUTES    = 25     # ignore garbage time + load management
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
 TEAM_STATS_CACHE={}; TENNIS_CACHE={}; NBA_CACHE={}
@@ -301,6 +302,7 @@ def mlb_opp_k_pct(team):
     bb=int(st.get('baseOnBalls',0) or 0); hbp=int(st.get('hitByPitch',0) or 0); pa=ab+bb+hbp
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
+
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
@@ -741,6 +743,7 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
     if extra_context:
         opp['context'] = extra_context
     return opp
+
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
