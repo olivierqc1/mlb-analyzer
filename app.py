@@ -28,7 +28,7 @@ DK_BASE            = "https://sportsbook.draftkings.com/api/odds/v1"
 DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36','Accept':'application/json','Referer':'https://sportsbook.draftkings.com/'}
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
-NBA_SEASON         = 2025    # 2024 = saison 2024-25
+NBA_SEASON         = 2025   # 2024 = saison 2024-25
 NBA_MIN_MINUTES    = 20     # ignore garbage time
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
@@ -301,7 +301,6 @@ def mlb_opp_k_pct(team):
     bb=int(st.get('baseOnBalls',0) or 0); hbp=int(st.get('hitByPitch',0) or 0); pa=ab+bb+hbp
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
-
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
@@ -742,7 +741,6 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
     if extra_context:
         opp['context'] = extra_context
     return opp
-
 
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
