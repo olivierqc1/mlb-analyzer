@@ -1,6 +1,6 @@
 <!-- ╔══════════════════════════════════════════════════╗ -->
 <!-- ║  index.html — PARTIE 1/2  (colle en premier)   ║ -->
-<!-- ║  v2.4: Tab NBA ajouté                          ║ -->
+<!-- ║  v2.5: fix σ nettoyé (cstd)                    ║ -->
 <!-- ╚══════════════════════════════════════════════════╝ -->
 <!DOCTYPE html>
 <html lang="fr">
@@ -18,7 +18,6 @@ body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
 .mode-tab{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:10px;text-align:center;cursor:pointer;font-size:11px;color:#94a3b8;font-weight:600;transition:all .2s}
 .mode-tab.active{background:#7c3aed;border-color:#7c3aed;color:white}
-/* 5 sport tabs */
 .sport-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:10px}
 .sport-tab{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:8px 2px;text-align:center;cursor:pointer;transition:all .2s}
 .sport-tab.active.mlb{background:rgba(37,99,235,.2);border:2px solid #2563eb}
@@ -268,6 +267,7 @@ function filterHist(f,el){
 
 <!-- ╔══════════════════════════════════════════════════╗ -->
 <!-- ║  index.html — PARTIE 2/2  (colle à la suite)   ║ -->
+<!-- ║  v2.5: fix σ nettoyé (cstd)                    ║ -->
 <!-- ╚══════════════════════════════════════════════════╝ -->
 <script>
 function renderHistory(){
@@ -432,6 +432,8 @@ function renderCards(opps){
 function card(o,i){
   const la=o.line_analysis,ds=o.deep_stats,sv=o.statistical_validation,norm=sv.normality||{},gof=sv.chi_gof,q=o.quality;
   const isO=la.recommendation==='OVER',prob=isO?la.over_probability:la.under_probability;
+  // FIX: affiche cstd (σ nettoyé) si disponible, sinon fallback sur std brut
+  const sigma_display = ds.cstd != null ? ds.cstd : ds.std;
   const games=o.recent_games||[],maxV=Math.max(...games.map(g=>g.stat),la.bookmaker_line+2,1),lp=(la.bookmaker_line/maxV)*100;
   const bars=games.slice(0,10).reverse().map(g=>`<div class="k-bar ${g.stat>la.bookmaker_line?'kb-over':'kb-under'}" style="height:${Math.max(5,(g.stat/maxV)*100)}%;position:relative"><div class="k-line" style="bottom:${lp}%"></div></div>`).join('');
   const cells=games.slice(0,10).map(g=>`<div class="sc-cell ${g.stat>la.bookmaker_line?'over':'under'}"><div class="sk">${g.stat}</div><div style="color:#475569;font-size:8px">${g.date?g.date.slice(5):''}</div></div>`).join('');
@@ -463,7 +465,7 @@ function card(o,i){
       <div class="sc"><div class="l">L5</div><div class="v cb">${ds.avg_last_5}</div></div>
       <div class="sc"><div class="l">Moy</div><div class="v">${ds.clean_mean}</div></div>
       <div class="sc"><div class="l">Adj</div><div class="v cp">${ds.adjusted_mean}</div></div>
-      <div class="sc"><div class="l">σ</div><div class="v" style="color:#a78bfa">${ds.std}</div></div>
+      <div class="sc"><div class="l">σ</div><div class="v" style="color:#a78bfa">${sigma_display}</div></div>
       <div class="sc"><div class="l">Kelly</div><div class="v cy">${la.kelly_criterion}%</div></div>
     </div>
     <div class="prob-wrap">
@@ -478,6 +480,7 @@ function card(o,i){
         <div class="dr"><span class="dl">Matchs analysés</span><span class="dv">${ds.games_analyzed}</span></div>
         <div class="dr"><span class="dl">OVER historique</span><span class="dv">${ds.over_count}/${ds.games_analyzed}</span></div>
         <div class="dr"><span class="dl">Moy 10 derniers</span><span class="dv">${ds.avg_last_10} ${o.stat_label}</span></div>
+        <div class="dr"><span class="dl">σ brut / σ nettoyé</span><span class="dv">${ds.std} / ${ds.cstd??ds.std}</span></div>
         <div class="dr"><span class="dl">Consistance</span><span class="dv" style="color:${ds.consistency>=60?'#4ade80':'#fbbf24'}">${ds.consistency}%</span></div>
         <div class="dr"><span class="dl">Tendance</span><span class="dv">${tr} ${ds.trend_slope>0?'+':''}${ds.trend_slope}</span></div>
       </div>
