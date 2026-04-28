@@ -30,7 +30,7 @@ DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
 NBA_SEASON         = 2025   # 2025 = saison 2025-26
-NBA_MIN_MINUTES    = 25     # ignore garbage time + load management
+NBA_MIN_MINUTES    = 15     # filtre DNP seulement — val_int==0 gère le reste
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
 TEAM_STATS_CACHE={}; TENNIS_CACHE={}; NBA_CACHE={}
@@ -357,6 +357,7 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
     Gamelog NBA v3.0 — fix pondération série playoffs.
 
     Stratégie CORRECTE :
+
 
     - Fetch tous les games (playoffs + reg season)
     - Déduplique par date AVANT la pondération
@@ -717,7 +718,6 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
         'quality':a['quality'],
         'line_analysis':{'bookmaker_line':line,'bookmaker':best['book'].upper(),
             'recommendation':a['rec'],'raw_edge':a['raw_edge'],'edge':a['edge'],
-
 
             'over_probability':a['over_p'],'under_probability':a['under_p'],'kelly_criterion':a['kelly']},
         'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],
