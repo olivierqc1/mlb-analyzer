@@ -507,8 +507,13 @@ def nba_compute_adj_mean(games, stat_col, opp_team, base_mean):
 # ── Odds API ──────────────────────────────────────────────────────────────────
 def get_odds_props(odds_sport, odds_market, max_games=20):
     if not ODDS_API_KEY: return {},{}
-    data = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
-        params={'apiKey':ODDS_API_KEY,'regions':'eu','bookmakers':'pinnacle','markets':'h2h','oddsFormat':'american'})
+    # Pinnacle pour NBA, regions us pour MLB/NHL/Tennis/Golf
+    is_nba = 'basketball_nba' in odds_sport
+    regions = 'eu' if is_nba else 'us'
+    bk_param = {'bookmakers':'pinnacle'} if is_nba else {}
+    base_params = {'apiKey':ODDS_API_KEY,'regions':regions,'markets':'h2h','oddsFormat':'american'}
+    base_params.update(bk_param)
+    data = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds", params=base_params)
     if not data:
         print(f"Odds API: aucun event pour {odds_sport}"); return {},{}
     props = {}; ev = {}
@@ -518,8 +523,9 @@ def get_odds_props(odds_sport, odds_market, max_games=20):
         ev[gid] = {'home_team':game.get('home_team',''),'away_team':game.get('away_team',''),
                    'time':game.get('commence_time','')}
         try:
-            d2 = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
-                params={'apiKey':ODDS_API_KEY,'regions':'eu','bookmakers':'pinnacle','markets':odds_market,'oddsFormat':'american'})
+            prop_params = {'apiKey':ODDS_API_KEY,'regions':regions,'markets':odds_market,'oddsFormat':'american'}
+            prop_params.update(bk_param)
+            d2 = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds", params=prop_params)
             if not d2: continue
             for bk in d2.get('bookmakers',[]):
                 for mk in bk.get('markets',[]):
@@ -806,6 +812,14 @@ def scan_sport(sport, stat_type_filter=None, min_edge=5.0):
                     all_opp_abbrs[opp_key]=nba_get_opp_abbr(pname,home_team,away_team)
                     time.sleep(0.15)
                 opp_abbr=all_opp_abbrs.get(opp_key)
+
+                # ── FILTRE ÉQUIPE ─────────────────────────────────────────────
+                # Si opp_abbr est None → le joueur n'est sur aucune des deux équipes
+                # (ex: Vucevic/Bulls dans 76ers@Celtics) → skip
+                if opp_abbr is None:
+                    print(f"TEAM FAIL {pname}: pas dans {home_team} vs {away_team} → SKIP")
+                    continue
+                # ─────────────────────────────────────────────────────────────
 
                 # Fetch gamelog
                 games=nba_get_gamelog(pid, stat_col, opp_abbr=opp_abbr)
