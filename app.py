@@ -369,7 +369,7 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
     """
     col_map = {'pts':'PTS', 'reb':'REB', 'ast':'AST'}
     nba_col = col_map.get(stat_col, stat_col.upper())
-    ck = f"nba_{player_id}_{stat_col}_{opp_abbr or 'all'}"
+    ck = f"nba_v2_{player_id}_{stat_col}_{opp_abbr or 'all'}"
     if ck in NBA_CACHE: return NBA_CACHE[ck]
 
     raw_games = []  # liste de dicts uniques par date
@@ -457,7 +457,7 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
         raw_mean = float(np.mean([g['stat'] for g in uniq]))
         print(f"  nba gamelog {player_id} {stat_col}: {len(uniq)} games, raw_mean={raw_mean:.1f}, opp={opp_abbr}")
 
-    if uniq: NBA_CACHE[ck] = uniq
+    if uniq: NBA_CACHE[f"nba_v2_{player_id}_{stat_col}_{opp_abbr or 'all'}"] = uniq
     return uniq or None
 
 def nba_weighted_mean(games):
