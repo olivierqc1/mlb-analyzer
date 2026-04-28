@@ -8,7 +8,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests, numpy as np, os, math, time, re, io, csv
 from scipy import stats as scipy_stats
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+BCN_TZ = timezone(timedelta(hours=2))  # UTC+2 Barcelona
 from collections import Counter
 
 app = Flask(__name__)
@@ -28,8 +29,8 @@ DK_BASE            = "https://sportsbook.draftkings.com/api/odds/v1"
 DK_HEADERS         = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36','Accept':'application/json','Referer':'https://sportsbook.draftkings.com/'}
 LEAGUE_AVG_K_PCT   = 0.225
 CURRENT_MLB_SEASON = 2026
-NBA_SEASON         = 2025   # 2024 = saison 2024-25
-NBA_MIN_MINUTES    = 20     # ignore garbage time
+NBA_SEASON         = 2025   # 2025 = saison 2025-26
+NBA_MIN_MINUTES    = 25     # ignore garbage time + load management
 
 GAMELOG_CACHE={}; SCHEDULE_CACHE={}; PLAYER_ID_CACHE={}
 TEAM_STATS_CACHE={}; TENNIS_CACHE={}; NBA_CACHE={}
@@ -301,8 +302,6 @@ def mlb_opp_k_pct(team):
     bb=int(st.get('baseOnBalls',0) or 0); hbp=int(st.get('hitByPitch',0) or 0); pa=ab+bb+hbp
     if pa==0: return None
     kp=k/pa; TEAM_STATS_CACHE[key]=kp; return kp
-
-
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 2/3   (colle à la suite de P1)     ║
 # ║  v3.0: fix gamelog NBA, pondération corrigée        ║
@@ -315,33 +314,16 @@ from nba_api.stats.static import teams as nba_teams_static
 NBA_DEF_RATING_CACHE = {}
 
 def nba_get_team_def_rating(team_name):
-    key = norm_name(team_name)
-    if key in NBA_DEF_RATING_CACHE: return NBA_DEF_RATING_CACHE[key]
-    try:
-        teams = nba_teams_static.get_teams()
-        team = next((t for t in teams if norm_name(t['full_name']) == key
-                     or norm_name(t['nickname']) in key), None)
-        if not team: return None
-        from nba_api.stats.endpoints import leaguedashteamstats
-        stats = leaguedashteamstats.LeagueDashTeamStats(
-            season='2025-26', measure_type_detailed_defense='Defense',
-            per_mode_simple='PerGame', timeout=20)
-        df = stats.get_data_frames()[0]
-        row = df[df['TEAM_ID']==team['id']]
-        if row.empty: return None
-        for col in ['DEF_RATING','OPP_PTS']:
-            if col in row.columns:
-                r = float(row[col].values[0])
-                NBA_DEF_RATING_CACHE[key]=r; return r
-    except Exception as e: print(f"NBA def rating error {team_name}: {e}")
+    # Désactivé — LeagueDashTeamStats incompatible avec la version nba_api sur Render
     return None
 
 def nba_search_player(name):
     key = 'nba_' + norm_name(name)
     if key in PLAYER_ID_CACHE: return PLAYER_ID_CACHE[key]
+    # Nom complet en PREMIER pour éviter les faux positifs (Mitchell → Davion vs Donovan)
     for search_fn, arg in [
-        (nba_players_static.find_players_by_last_name,  name.split()[-1]),
         (nba_players_static.find_players_by_full_name,  name),
+        (nba_players_static.find_players_by_last_name,  name.split()[-1]),
         (nba_players_static.find_players_by_first_name, name.split()[0]),
     ]:
         try:
@@ -375,6 +357,7 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
     Gamelog NBA v3.0 — fix pondération série playoffs.
 
     Stratégie CORRECTE :
+
     - Fetch tous les games (playoffs + reg season)
     - Déduplique par date AVANT la pondération
     - Crée une liste de weights séparée pour analyze()
@@ -411,6 +394,7 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
                 if mins < NBA_MIN_MINUTES: continue
 
                 # Vérifie que la colonne stat existe
+                # Note: val_int == 0 check vient après le parse
                 val = row.get(nba_col)
                 if val is None:
                     print(f"  WARNING: colonne {nba_col} introuvable, cols={list(row.index)}")
@@ -419,6 +403,9 @@ def nba_get_gamelog(player_id, stat_col, opp_abbr=None):
                     val_int = int(float(val))
                 except:
                     continue
+
+                # Double filtre DNP: 0 pts = pas joué (DNP, garbage time, erreur API)
+                if val_int == 0: continue
 
                 # Parse la date
                 try:
@@ -665,7 +652,7 @@ def golf_get_stats(player_name):
         if names_match(player_name, p.get('player_name','')):
             sg = p.get('sg_total')
             if sg is not None:
-                games.append({'date':datetime.now().strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
+                games.append({'date':datetime.now(BCN_TZ).strftime('%Y-%m-%d'),'stat':round(float(sg),3)})
     if games: GAMELOG_CACHE[ck]=games
     return games or None
 
@@ -730,6 +717,8 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
         'quality':a['quality'],
         'line_analysis':{'bookmaker_line':line,'bookmaker':best['book'].upper(),
             'recommendation':a['rec'],'raw_edge':a['raw_edge'],'edge':a['edge'],
+
+
             'over_probability':a['over_p'],'under_probability':a['under_p'],'kelly_criterion':a['kelly']},
         'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],
             'std':a['std'],'avg_last_5':a['l5'],'avg_last_10':a['l10'],'consistency':a['cons'],
@@ -742,8 +731,6 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
     if extra_context:
         opp['context'] = extra_context
     return opp
-
-
 # ╔══════════════════════════════════════════════════════╗
 # ║  app.py — PARTIE 3/3   (colle à la suite de P2)     ║
 # ║  v3.0: sanity check moyenne vs ligne                ║
@@ -967,12 +954,12 @@ def daily_opportunities():
         opps,analyzed,n_games=scan_sport(sport,stat_type,min_edge)
         if opps and isinstance(opps[0],dict) and opps[0].get('_no_key'):
             return jsonify({'status':'INFO','sport':sport,'message':opps[0]['message'],
-                'opportunities':[],'players_analyzed':0,'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')})
+                'opportunities':[],'players_analyzed':0,'scan_time':datetime.now(BCN_TZ).strftime('%Y-%m-%d %H:%M')})
         return jsonify(to_python({'status':'SUCCESS','sport':sport,'version':'3.0',
             'stat_types_scanned':[stat_type] if stat_type else SPORT_STATS[sport],
             'total_games':n_games,'players_analyzed':analyzed,
             'opportunities_found':len(opps),'opportunities':opps,
-            'scan_time':datetime.now().strftime('%Y-%m-%d %H:%M')}))
+            'scan_time':datetime.now(BCN_TZ).strftime('%Y-%m-%d %H:%M')}))
     except Exception as e:
         import traceback
         return jsonify({'status':'ERROR','message':str(e),'trace':traceback.format_exc()[:1000]}),500
