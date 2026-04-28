@@ -508,7 +508,7 @@ def nba_compute_adj_mean(games, stat_col, opp_team, base_mean):
 def get_odds_props(odds_sport, odds_market, max_games=20):
     if not ODDS_API_KEY: return {},{}
     data = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/odds",
-        params={'apiKey':ODDS_API_KEY,'regions':'us','markets':'h2h','oddsFormat':'american'})
+        params={'apiKey':ODDS_API_KEY,'regions':'eu','bookmakers':'pinnacle','markets':'h2h','oddsFormat':'american'})
     if not data:
         print(f"Odds API: aucun event pour {odds_sport}"); return {},{}
     props = {}; ev = {}
@@ -519,7 +519,7 @@ def get_odds_props(odds_sport, odds_market, max_games=20):
                    'time':game.get('commence_time','')}
         try:
             d2 = safe_req(f"{ODDS_BASE}/sports/{odds_sport}/events/{gid}/odds",
-                params={'apiKey':ODDS_API_KEY,'regions':'us','markets':odds_market,'oddsFormat':'american'})
+                params={'apiKey':ODDS_API_KEY,'regions':'eu','bookmakers':'pinnacle','markets':odds_market,'oddsFormat':'american'})
             if not d2: continue
             for bk in d2.get('bookmakers',[]):
                 for mk in bk.get('markets',[]):
@@ -718,6 +718,7 @@ def _build_opp(player,stat_type,sport,line,best,gi,opponent,is_home,a,extra_cont
         'quality':a['quality'],
         'line_analysis':{'bookmaker_line':line,'bookmaker':best['book'].upper(),
             'recommendation':a['rec'],'raw_edge':a['raw_edge'],'edge':a['edge'],
+
 
             'over_probability':a['over_p'],'under_probability':a['under_p'],'kelly_criterion':a['kelly']},
         'deep_stats':{'mean':a['mean'],'clean_mean':a['cmean'],'adjusted_mean':a['adj_mean'],
