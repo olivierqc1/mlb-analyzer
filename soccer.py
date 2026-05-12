@@ -130,6 +130,8 @@ def parse_odds(event):
                 name  = oc.get('name','')
                 price = oc.get('price', -110)
                 point = oc.get('point')
+
+
                 # Clé unique par outcome
                 if mkey == 'h2h':
                     home = event.get('home_team','')
