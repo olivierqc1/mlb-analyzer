@@ -373,3 +373,4 @@ def soccer_health():
         'calls_per_game_analysis': '~8',
         'calls_per_player_analysis': '~2',
     })
+ 
