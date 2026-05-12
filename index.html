@@ -138,7 +138,6 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
     <div class="mode-tab"        id="modeHistory"  onclick="setMode('history')">📋 Historique</div>
     <div class="mode-tab"        id="modeBacktest" onclick="setMode('backtest')">🔬 Backtest</div>
     
-
   </div>
 
   <!-- ── SCANNER ── -->
@@ -147,6 +146,7 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div class="sport-tab mlb active" onclick="setSport('mlb',this)">
         <span class="si">⚾</span><span class="sl">MLB</span><span class="ss">K · TB</span></div>
       <div class="sport-tab nba" onclick="setSport('nba',this)">
+
         <span class="si">🏀</span><span class="sl">NBA</span><span class="ss">Pts·Reb·Ast</span></div>
       <div class="sport-tab nhl" onclick="setSport('nhl',this)">
         <span class="si">🏒</span><span class="sl">NHL</span><span class="ss">SOG</span></div>
@@ -280,7 +280,6 @@ function renderStatTabs(){
   ).join('');
 }
 
-
 // ── Scan ──────────────────────────────────────────────────────────────────────
 async function scan(){
   const btn = document.getElementById('btnScan');
@@ -296,6 +295,8 @@ async function scan(){
     const sp = currentStat ? `&stat_type=${currentStat}` : '';
     st.textContent = `📊 Analyse ${currentSport.toUpperCase()} en cours...`;
     const res  = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEV}${sp}`);
+
+
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.status==='INFO'){
@@ -383,8 +384,8 @@ function buildCard(o, i){
       <div class="sc"><div class="l">L5</div><div class="v" style="color:#60a5fa">${ds.avg_last_5}</div></div>
       <div class="sc"><div class="l">Moy</div><div class="v">${ds.weighted_mean||ds.mean}</div></div>
       <div class="sc"><div class="l">Hit%</div><div class="v" style="color:${ds.hit_rate>=55?'#4ade80':ds.hit_rate<=45?'#f87171':'#fbbf24'}">${ds.hit_rate}%</div></div>
-      <div class="sc"><div class="l">Trend</div><div class="v">${tr}</div></div>
-      <div class="sc"><div class="l">Kelly</div><div class="v" style="color:#a78bfa">${la.kelly_criterion}%</div></div>
+      <div class="sc"><div class="l">σ</div><div class="v" style="color:#a78bfa">${ds.std||'–'}</div></div>
+      <div class="sc"><div class="l">Cons%</div><div class="v" style="color:${(ds.consistency||0)>=65?'#4ade80':(ds.consistency||0)>=45?'#fbbf24':'#f87171'}">${ds.consistency||'–'}%</div></div>
     </div>
     <div class="prob-wrap">
       <div class="prob-labels"><span>OVER ${la.bookmaker_line} · ${la.over_probability}%</span><span>UNDER · ${la.under_probability}%</span></div>
@@ -402,6 +403,8 @@ function buildCard(o, i){
         <div class="dr"><span class="dl">Moy pondérée</span><span class="dv">${ds.weighted_mean}</span></div>
         <div class="dr"><span class="dl">L10 moy</span><span class="dv">${ds.avg_last_10}</span></div>
         <div class="dr"><span class="dl">Cotes book</span><span class="dv">${la.actual_odds>=0?'+':''}${la.actual_odds} (${la.bookmaker})</span></div>
+        <div class="dr"><span class="dl">Trend</span><span class="dv">${tr} ${ds.trend}</span></div>
+        <div class="dr"><span class="dl">Kelly</span><span class="dv" style="color:#a78bfa">${la.kelly_criterion}%</span></div>
       </div>
       ${cells?`<div class="detail-sec"><div class="detail-title">10 derniers</div><div class="recent-grid">${cells}</div></div>`:''}
     </div>
@@ -420,7 +423,6 @@ async function resolveBet(betId){
   const el = document.getElementById('rb_'+betId);
   if(el){ el.className='rb rb-loading'; el.textContent='⏳'; }
   try{
-
     const url = `${API}/api/actual-result?player=${encodeURIComponent(bet.player)}&stat_type=${bet.stat_type}&sport=${bet.sport}&date=${bet.scan_date}`;
     const res  = await fetch(url); if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json(); if(data.status!=='SUCCESS') throw new Error(data.message);
@@ -442,6 +444,7 @@ async function resolveAll(){
   for(const bet of bets){ await resolveBet(bet.id); await new Promise(r=>setTimeout(r,400)); }
   toast('✅ Tous résolus!');
 }
+
 
 // ── Historique ────────────────────────────────────────────────────────────────
 function filterHist(f,el){
@@ -513,43 +516,74 @@ function clearAll(){ if(confirm('Effacer tout?')){ localStorage.removeItem(STORA
 
 // ── Backtest ──────────────────────────────────────────────────────────────────
 function renderBacktest(){
+  const c = document.getElementById('btContent');
+  c.innerHTML=`
+    <div style="font-weight:700;color:#a78bfa;margin-bottom:10px">🔬 Walk-Forward Backtest</div>
+    <p style="font-size:11px;color:#64748b;margin-bottom:10px">Teste le modèle sur données historiques réelles — entraîne sur N matchs, prédit le suivant, vérifie.</p>
+    <select id="btStat" style="width:100%;background:#0a0e13;border:1px solid #334155;border-radius:6px;padding:8px;color:#fff;font-size:13px;margin-bottom:8px">
+      <option value="pitcher_strikeouts">⚾ Pitcher Strikeouts (K)</option>
+      <option value="batter_total_bases">🏏 Batter Total Bases</option>
+    </select>
+    <button onclick="runBacktest()" class="btn" style="width:100%;margin-bottom:10px">🔬 Lancer le Backtest (lanceurs du jour)</button>
+    <div id="btResult"></div>
+    <div style="margin-top:12px;border-top:1px solid #334155;padding-top:10px">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase">Mes bets résolus</div>
+      <div id="btManual"></div>
+    </div>`;
+  renderManualBets();
+}
+
+function renderManualBets(){
   const bets=loadBets().filter(b=>b.status!=='pending');
-  if(bets.length<5){
-    document.getElementById('btContent').innerHTML=`<div class="empty"><div class="empty-icon">🔬</div><p>Pas assez de données</p><p style="font-size:11px;margin-top:5px">5 bets résolus minimum.</p></div>`;
-    return;
-  }
+  const el=document.getElementById('btManual');
+  if(!el) return;
+  if(bets.length<3){el.innerHTML=`<div style="color:#334155;font-size:12px">Pas encore assez de bets résolus.</div>`;return;}
   const won=bets.filter(b=>b.status==='won').length;
-  const hr=(won/bets.length*100).toFixed(1);
   const profit=bets.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
-  const roi=(profit/(bets.length*10)*100).toFixed(1);
-  const sports=[...new Set(bets.map(b=>b.sport))];
-  const grades=['A','B','C'];
-  const sportRows=sports.map(sp=>{
-    const sb=bets.filter(b=>b.sport===sp); const sw=sb.filter(b=>b.status==='won').length;
-    const shr=(sw/sb.length*100).toFixed(0); const sp2=sb.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
-    return `<div class="dr"><span class="dl">${ICONS[sp]||sp} (${sb.length})</span><span class="dv" style="color:${parseFloat(shr)>=52?'#4ade80':'#f87171'}">${shr}% · ${sp2>=0?'+':''}$${sp2.toFixed(0)}</span></div>`;
-  }).join('');
-  const gradeRows=grades.map(g=>{
-    const gb=bets.filter(b=>b.grade===g); if(!gb.length) return '';
-    const gw=gb.filter(b=>b.status==='won').length; const ghr=(gw/gb.length*100).toFixed(0);
-    const gp=gb.reduce((s,b)=>s+(b.status==='won'?10*100/110:-10),0);
-    return `<div class="dr"><span class="dl">Grade ${g} (${gb.length})</span><span class="dv" style="color:${parseFloat(ghr)>=52?'#4ade80':'#f87171'}">${ghr}% · ${gp>=0?'+':''}$${gp.toFixed(0)}</span></div>`;
-  }).join('');
-  const recent=bets.slice(0,10).map(b=>`<div class="dr">
-    <span class="dl">${ICONS[b.sport]||''} ${b.player.split(' ').pop()} ${b.recommendation} ${b.bookmaker_line}</span>
-    <span style="color:#334155;font-size:10px">${b.actual_value??'–'} réel</span>
-    <span style="color:${b.status==='won'?'#4ade80':'#f87171'}">${b.status==='won'?'✅':'❌'}</span></div>`).join('');
-  document.getElementById('btContent').innerHTML=`
-    <div style="font-weight:700;color:#a78bfa;margin-bottom:10px">🔬 Backtest — bets résolus</div>
-    <div class="kpi-grid" style="margin-bottom:10px">
-      <div class="kpi"><div class="kpi-v ${parseFloat(hr)>=52.4?'green':'red'}">${hr}%</div><div class="kpi-l">Hit Rate</div></div>
-      <div class="kpi"><div class="kpi-v ${parseFloat(roi)>=0?'green':'red'}">${parseFloat(roi)>=0?'+':''}${roi}%</div><div class="kpi-l">ROI</div></div>
+  const hr=(won/bets.length*100).toFixed(1);
+  el.innerHTML=`
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-v ${parseFloat(hr)>=52.4?'green':'red'}">${hr}%</div><div class="kpi-l">Hit Rate réel</div></div>
+      <div class="kpi"><div class="kpi-v ${profit>=0?'green':'red'}">${profit>=0?'+':''}$${profit.toFixed(0)}</div><div class="kpi-l">Profit ($10/bet)</div></div>
       <div class="kpi"><div class="kpi-v blue">${bets.length}</div><div class="kpi-l">Bets résolus</div></div>
-    </div>
-    <div class="detail-sec"><div class="detail-title">Par sport</div>${sportRows}</div>
-    <div class="detail-sec"><div class="detail-title">Par grade</div>${gradeRows}</div>
-    <div class="detail-sec"><div class="detail-title">10 derniers</div>${recent}</div>
-    <div style="margin-top:8px;font-size:10px;color:#334155;text-align:center">Simulation $10/bet @ -110 · Breakeven = 52.4%</div>`;
+    </div>`;
+}
+
+async function runBacktest(){
+  const stat = document.getElementById('btStat')?.value || 'pitcher_strikeouts';
+  const out  = document.getElementById('btResult');
+  out.innerHTML=`<div style="color:#60a5fa;font-size:12px;text-align:center">⏳ Calcul walk-forward (~30s)...</div>`;
+  try{
+    const res  = await fetch(`${API}/api/backtest?sport=mlb&stat_type=${stat}`);
+    const data = await res.json();
+    if(data.status!=='SUCCESS'){ out.innerHTML=`<div class="err">❌ ${data.message}</div>`; return; }
+    const ag = data.aggregate;
+    const hrC = ag.hit_rate>=52.4?'green':'red';
+    const roiC= ag.roi_pct>=0?'green':'red';
+    const rows = (data.players||[]).map(p=>{
+      const bt=p.backtest;
+      const c=bt.hit_rate>=52.4?'#4ade80':'#f87171';
+      return `<div class="dr">
+        <span class="dl">${p.player.split(' ').pop()} (${bt.total_bets} bets)</span>
+        <span class="dv" style="color:${c}">${bt.hit_rate}% · ${bt.profit_usd>=0?'+':''}$${bt.profit_usd}</span></div>`;
+    }).join('');
+    const recent=(data.players[0]?.backtest.per_bet||[]).slice(-8).map(r=>
+      `<div class="dr"><span class="dl">${r.date} · ${r.rec} ${r.sim_line}K</span>
+       <span style="color:#334155">${r.actual} réel</span>
+       <span style="color:${r.correct?'#4ade80':'#f87171'}">${r.correct?'✅':'❌'}</span></div>`
+    ).join('');
+    out.innerHTML=`
+      <div class="kpi-grid" style="margin-bottom:8px">
+        <div class="kpi"><div class="kpi-v ${hrC}">${ag.hit_rate}%</div><div class="kpi-l">Hit Rate global</div></div>
+        <div class="kpi"><div class="kpi-v ${roiC}">${ag.roi_pct>=0?'+':''}${ag.roi_pct}%</div><div class="kpi-l">ROI sim.</div></div>
+        <div class="kpi"><div class="kpi-v blue">${ag.total_bets}</div><div class="kpi-l">Bets testés</div></div>
+      </div>
+      <div style="font-size:10px;color:#475569;text-align:center;margin-bottom:8px">
+        Breakeven = 52.4% · Sim $10/bet @ -110 · Ligne = médiane historique
+      </div>
+      <div class="detail-sec"><div class="detail-title">Par lanceur (${data.players_backtested} testés)</div>${rows}</div>
+      ${recent?`<div class="detail-sec"><div class="detail-title">15 derniers bets (${data.players[0]?.player||''})</div>${recent}</div>`:''}`;
+  }catch(e){out.innerHTML=`<div class="err">❌ ${e.message}</div>`;}
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
