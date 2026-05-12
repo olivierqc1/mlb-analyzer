@@ -147,6 +147,7 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
         <span class="si">⚾</span><span class="sl">MLB</span><span class="ss">K · TB</span></div>
       <div class="sport-tab nba" onclick="setSport('nba',this)">
 
+
         <span class="si">🏀</span><span class="sl">NBA</span><span class="ss">Pts·Reb·Ast</span></div>
       <div class="sport-tab nhl" onclick="setSport('nhl',this)">
         <span class="si">🏒</span><span class="sl">NHL</span><span class="ss">SOG</span></div>
@@ -297,6 +298,7 @@ async function scan(){
     const res  = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEV}${sp}`);
 
 
+
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.status==='INFO'){
@@ -444,6 +446,7 @@ async function resolveAll(){
   for(const bet of bets){ await resolveBet(bet.id); await new Promise(r=>setTimeout(r,400)); }
   toast('✅ Tous résolus!');
 }
+
 
 
 // ── Historique ────────────────────────────────────────────────────────────────
