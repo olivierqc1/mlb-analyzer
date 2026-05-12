@@ -81,8 +81,14 @@ def analyze(games, line):
     kelly = round(max(0, (rec_prob - implied) / (1 - implied)) * 25, 1) \
             if rec_prob > implied else 0.0
 
+    # Standard deviation + consistency
+    import math as _math
+    std = _math.sqrt(sum((v-mean)**2 for v in vals)/n) if n>1 else 0.0
+    cons = round(max(0, 100-(std/mean*100)),1) if mean>0 else 50.0
+
     return {
         'n': n, 'mean': round(mean,2), 'wmean': round(wmean,2),
+        'std': round(std,2), 'cons': round(cons,1),
         'l5': round(l5,2), 'l10': round(l10,2),
         'hit_rate': round(hr,4), 'over_n': over_n, 'under_n': under_n,
         'rec': rec, 'rec_prob': round(rec_prob,4),
@@ -133,6 +139,7 @@ def build_opp(player, sport, stat_type, stat_label, line, book, odds_price,
         },
         'deep_stats': {
             'mean': a['mean'], 'weighted_mean': a['wmean'],
+            'std': a.get('std',0), 'consistency': a.get('cons',50),
             'avg_last_5': a['l5'], 'avg_last_10': a['l10'],
             'hit_rate': round(a['hit_rate']*100,1),
             'over_count': a['over_n'], 'under_count': a['under_n'],
@@ -140,4 +147,69 @@ def build_opp(player, sport, stat_type, stat_label, line, book, odds_price,
         },
         'statistical_validation': {'is_reliable': a['grade'] in ('A','B')},
         'recent_games': a['recent'],
+    }
+
+
+def walk_forward_backtest(games, min_train=12, stake=10.0):
+    """
+    Walk-forward backtest sur données historiques.
+    games : list triée récent→ancien (index 0 = plus récent)
+    On inverse pour avoir chrono, train sur premiers N, prédit N+1.
+    """
+    if len(games) < min_train + 3:
+        return None
+
+    chrono = list(reversed(games))  # ancien → récent
+    results = []
+    profit  = 0.0
+
+    for i in range(min_train, len(chrono)):
+        train  = list(reversed(chrono[:i]))   # récent→ancien pour analyze
+        actual = chrono[i]['stat']
+
+        # Ligne simulée = médiane du train set (faute de lignes historiques)
+        vals_train = sorted([g['stat'] for g in train])
+        n_t = len(vals_train)
+        sim_line = (vals_train[n_t//2-1]+vals_train[n_t//2])/2 if n_t%2==0 else float(vals_train[n_t//2])
+
+        a = analyze(train, sim_line)
+        if not a or a['rec'] == 'SKIP' or a['grade'] == 'AVOID':
+            continue
+
+        correct = (a['rec'] == 'OVER'  and actual > sim_line) or                   (a['rec'] == 'UNDER' and actual < sim_line)
+        pnl = stake*(100/110) if correct else -stake
+        profit += pnl
+
+        results.append({
+            'game_num':   i,
+            'date':       chrono[i].get('date','')[:10],
+            'actual':     actual,
+            'sim_line':   round(sim_line, 1),
+            'rec':        a['rec'],
+            'correct':    correct,
+            'grade':      a['grade'],
+            'hit_rate':   round(a['hit_rate']*100, 1),
+            'pnl':        round(pnl, 2),
+        })
+
+    if not results:
+        return None
+
+    n     = len(results)
+    wins  = sum(1 for r in results if r['correct'])
+    ab    = [r for r in results if r['grade'] in ('A','B')]
+    ab_w  = sum(1 for r in ab if r['correct'])
+
+    return {
+        'total_bets':       n,
+        'wins':             wins,
+        'losses':           n - wins,
+        'hit_rate':         round(wins/n*100, 1),
+        'profit_usd':       round(profit, 2),
+        'roi_pct':          round(profit/(n*stake)*100, 1),
+        'grade_ab_bets':    len(ab),
+        'grade_ab_hit_rate':round(ab_w/len(ab)*100,1) if ab else 0,
+        'grade_ab_profit':  round(sum(r['pnl'] for r in ab), 2),
+        'breakeven':        52.4,
+        'per_bet':          results[-15:],  # 15 derniers
     }
