@@ -215,7 +215,6 @@ def scan_nba(stat_filter=None, min_ev=3.0):
     return opps, analyzed, ngames
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@nba_bp.route('/api/daily-opportunities', methods=['GET'])
 def nba_opportunities():
     try:
         sport = request.args.get('sport','').lower()
