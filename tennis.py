@@ -94,7 +94,6 @@ def scan_tennis(min_ev=3.0):
     opps.sort(key=lambda x:({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3)))
     return opps, analyzed, len(props)
 
-@tennis_bp.route('/api/daily-opportunities', methods=['GET'])
 def tennis_opportunities():
     try:
         sport = request.args.get('sport','').lower()
