@@ -297,8 +297,6 @@ async function scan(){
     st.textContent = `📊 Analyse ${currentSport.toUpperCase()} en cours...`;
     const res  = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEV}${sp}`);
 
-
-
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.status==='INFO'){
