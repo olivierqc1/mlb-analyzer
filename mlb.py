@@ -171,7 +171,6 @@ def scan_mlb(stat_filter=None, min_ev=3.0):
     return opps, analyzed, len(pitchers)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
-@mlb_bp.route('/api/daily-opportunities', methods=['GET'])
 def mlb_opportunities():
     try:
         sport = request.args.get('sport','').lower()
