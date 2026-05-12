@@ -13,11 +13,11 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .header h1{font-size:1.25em;font-weight:800}
 .header p{color:#475569;font-size:10px;margin-top:3px}
 /* Mode tabs */
-.mode-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px}
+.mode-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
 .mode-tab{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:9px 4px;text-align:center;cursor:pointer;font-size:11px;color:#94a3b8;font-weight:600}
 .mode-tab.active{background:#7c3aed22;border-color:#7c3aed;color:#a78bfa}
 /* Sport tabs */
-.sport-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:10px}
+.sport-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:10px}
 .sport-tab{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:8px 2px;text-align:center;cursor:pointer;transition:all .15s}
 .sport-tab .si{font-size:15px;display:block;margin-bottom:2px}
 .sport-tab .sl{font-size:9px;font-weight:700;color:#94a3b8}
@@ -43,7 +43,7 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .err{background:#dc262622;border:1px solid #dc2626;border-radius:8px;padding:9px;margin-bottom:8px;font-size:12px;color:#fca5a5}
 .info-msg{background:#2563eb18;border:1px solid #2563eb;border-radius:8px;padding:12px;font-size:12px;color:#93c5fd;text-align:center}
 /* Summary bar */
-.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:10px;background:#1e293b;border-radius:10px;padding:8px}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:10px;background:#1e293b;border-radius:10px;padding:8px}
 .si-box{text-align:center}.sv{font-size:1.25em;font-weight:700;color:#4ade80}.sl2{font-size:9px;color:#475569;margin-top:1px}
 /* Section title */
 .sec-title{color:#475569;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin:8px 0 5px}
@@ -107,7 +107,7 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
 .rb{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700;flex-shrink:0}
 .rb-won{background:#16a34a22;color:#4ade80}.rb-lost{background:#dc262622;color:#f87171}
 .rb-pending{background:#fbbf2422;color:#fbbf24}.rb-loading{background:#60a5fa22;color:#60a5fa}
-.bet-details{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;background:#0a0e13;border-radius:5px;padding:5px;margin-top:5px;font-size:10px;text-align:center}
+.bet-details{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;background:#0a0e13;border-radius:5px;padding:5px;margin-top:5px;font-size:10px;text-align:center}
 .bd-v{font-weight:700;font-size:12px}.bd-l{color:#475569;font-size:9px}
 .btn-resolve{background:#334155;border:none;border-radius:5px;padding:3px 8px;color:#94a3b8;font-size:10px;cursor:pointer;margin-top:5px}
 .btn-clear{background:#dc262218;border:1px solid #dc2626;border-radius:7px;padding:7px;color:#f87171;font-size:11px;cursor:pointer;width:100%;margin-top:8px}
@@ -137,7 +137,8 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
     <div class="mode-tab active" id="modeScanner"  onclick="setMode('scanner')">📊 Scanner</div>
     <div class="mode-tab"        id="modeHistory"  onclick="setMode('history')">📋 Historique</div>
     <div class="mode-tab"        id="modeBacktest" onclick="setMode('backtest')">🔬 Backtest</div>
-    <div class="mode-tab"        id="modeSoccer"   onclick="setMode('soccer')">⚽ Soccer</div>
+    
+
   </div>
 
   <!-- ── SCANNER ── -->
@@ -151,6 +152,8 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
         <span class="si">🏒</span><span class="sl">NHL</span><span class="ss">SOG</span></div>
       <div class="sport-tab ten" onclick="setSport('tennis',this)">
         <span class="si">🎾</span><span class="sl">Tennis</span><span class="ss">Aces</span></div>
+      <div class="sport-tab soc" onclick="setSport('soccer',this)">
+        <span class="si">⚽</span><span class="sl">Soccer</span><span class="ss">+EV Mkts</span></div>
     </div>
     <div class="stat-tabs" id="statTabs"></div>
     <div class="controls">
@@ -192,66 +195,6 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
     <div class="card"><div id="btContent"></div></div>
   </div>
 
-  <!-- ── SOCCER ── -->
-  <div id="soccerMode" style="display:none">
-    <div class="soc-tabs">
-      <button class="soc-tab active" id="stGame"  onclick="setSocTab('game')">⚽ Game Markets</button>
-      <button class="soc-tab"        id="stProps" onclick="setSocTab('props')">👤 Player Props</button>
-    </div>
-
-    <!-- Game Markets -->
-    <div id="socGame">
-      <div class="card">
-        <select id="sgLeague" class="soc-select">
-          <option>La Liga</option><option>EPL</option><option>Serie A</option>
-          <option>Bundesliga</option><option>Ligue 1</option><option>Champions League</option>
-          <option>Belgium Pro</option><option>Denmark Superliga</option>
-          <option>Italy Serie B</option><option>Greece SL</option>
-          <option>Argentina LPF</option><option>Saudi Pro</option>
-          <option>J.League</option><option>MLS</option><option>Eng Championship</option>
-        </select>
-        <div style="display:flex;gap:7px">
-          <input id="sgHome" class="soc-input" style="flex:1" placeholder="Domicile (ex: Napoli)">
-          <input id="sgAway" class="soc-input" style="flex:1" placeholder="Extérieur (ex: Bologna)">
-        </div>
-        <div style="display:flex;gap:7px;align-items:center">
-          <span style="font-size:12px;color:#64748b">Bankroll $</span>
-          <input id="sgBankroll" type="number" value="200" class="soc-input" style="width:90px;margin-bottom:0">
-          <button class="btn btn-green" style="flex:1" onclick="analyzeGame()">⚡ Analyser</button>
-        </div>
-      </div>
-      <div class="status" id="sgStatus"></div>
-      <div id="sgResult"></div>
-    </div>
-
-    <!-- Player Props -->
-    <div id="socProps" style="display:none">
-      <div class="card">
-        <select id="spLeague" class="soc-select">
-          <option>La Liga</option><option>EPL</option><option>Serie A</option>
-          <option>Bundesliga</option><option>Ligue 1</option>
-          <option>Argentina LPF</option><option>MLS</option>
-        </select>
-        <input id="spPlayer" class="soc-input" placeholder="Joueur (ex: Kvaratskhelia)">
-        <div style="display:flex;gap:7px">
-          <select id="spMarket" class="soc-select" style="flex:1;margin-bottom:0">
-            <option>Shots On Goal</option><option>Shots</option><option>Goals</option>
-            <option>Assists</option><option>Cards</option>
-          </select>
-          <input id="spLine" type="number" step="0.5" value="1.5" class="soc-input" style="width:75px;margin-bottom:0">
-        </div>
-        <div style="display:flex;gap:7px;align-items:center;margin-top:7px">
-          <span style="font-size:12px;color:#64748b">Bankroll $</span>
-          <input id="spBankroll" type="number" value="200" class="soc-input" style="width:90px;margin-bottom:0">
-
-
-          <button class="btn btn-green" style="flex:1" onclick="analyzePlayer()">⚡ Analyser</button>
-        </div>
-      </div>
-      <div class="status" id="spStatus"></div>
-      <div id="spResult"></div>
-    </div>
-  </div>
 </div>
 <div class="toast" id="toast"></div>
 <script>
@@ -262,6 +205,7 @@ const SPORT_STATS = {
   nba:    [{key:'',label:'Tous'},{key:'nba_points',label:'🏀 Pts'},{key:'nba_rebounds',label:'💪 Reb'},{key:'nba_assists',label:'🎯 Ast'}],
   nhl:    [{key:'',label:'Tous'},{key:'skater_shots',label:'🏒 SOG'}],
   tennis: [{key:'',label:'Tous'},{key:'tennis_aces',label:'🎾 Aces'}],
+  soccer: [{key:'',label:'Tous'}],
 };
 const ICONS = {mlb:'⚾',nba:'🏀',nhl:'🏒',tennis:'🎾',soccer:'⚽'};
 let currentSport='mlb', currentStat='', currentMode='scanner', histFilter='all';
@@ -307,7 +251,7 @@ function toast(msg){
 // ── Mode + Sport ──────────────────────────────────────────────────────────────
 function setMode(mode){
   currentMode = mode;
-  ['scanner','history','backtest','soccer'].forEach(m => {
+  ['scanner','history','backtest'].forEach(m => {
     document.getElementById(m+'Mode').style.display = m===mode ? 'block':'none';
     const tab = document.getElementById('mode'+m.charAt(0).toUpperCase()+m.slice(1));
     if(tab) tab.className = 'mode-tab'+(m===mode?' active':'');
@@ -335,6 +279,7 @@ function renderStatTabs(){
     `<div class="stat-tab${t.key===currentStat?' active':''}" onclick="setStat('${t.key}',this)">${t.label}</div>`
   ).join('');
 }
+
 
 // ── Scan ──────────────────────────────────────────────────────────────────────
 async function scan(){
@@ -475,6 +420,7 @@ async function resolveBet(betId){
   const el = document.getElementById('rb_'+betId);
   if(el){ el.className='rb rb-loading'; el.textContent='⏳'; }
   try{
+
     const url = `${API}/api/actual-result?player=${encodeURIComponent(bet.player)}&stat_type=${bet.stat_type}&sport=${bet.sport}&date=${bet.scan_date}`;
     const res  = await fetch(url); if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json(); if(data.status!=='SUCCESS') throw new Error(data.message);
@@ -490,7 +436,6 @@ async function resolveBet(betId){
   }
 }
 async function resolveAll(){
-
   const bets = loadBets().filter(b=>b.status==='pending');
   if(!bets.length){ toast('Aucun bet en attente'); return; }
   toast(`🔄 Résolution de ${bets.length} bets...`);
@@ -605,140 +550,6 @@ function renderBacktest(){
     <div class="detail-sec"><div class="detail-title">Par grade</div>${gradeRows}</div>
     <div class="detail-sec"><div class="detail-title">10 derniers</div>${recent}</div>
     <div style="margin-top:8px;font-size:10px;color:#334155;text-align:center">Simulation $10/bet @ -110 · Breakeven = 52.4%</div>`;
-}
-
-// ── Soccer ────────────────────────────────────────────────────────────────────
-function setSocTab(t){
-  document.getElementById('socGame').style.display  = t==='game'  ? 'block':'none';
-  document.getElementById('socProps').style.display = t==='props' ? 'block':'none';
-  document.getElementById('stGame').className  = 'soc-tab'+(t==='game'?' active':'');
-  document.getElementById('stProps').className = 'soc-tab'+(t==='props'?' active':'');
-}
-function evKelly(prob, american, bankroll){
-  if(!american || isNaN(parseFloat(american))) return null;
-  const a=parseFloat(american);
-  const dec = a>=0 ? a/100+1 : 100/Math.abs(a)+1;
-  const ev  = ((prob*dec)-1)*100;
-  const b   = dec-1; const q=1-prob;
-  const k   = Math.max(0,(prob*b-q)/b)*0.25;
-  const ip  = a>=0 ? 100/(a+100) : Math.abs(a)/(Math.abs(a)+100);
-  return { ev:ev.toFixed(1), kelly:(k*100).toFixed(1), bet:(k*bankroll).toFixed(2), ip:(ip*100).toFixed(1) };
-}
-function evHtml(prob, american, bankroll){
-  const r = evKelly(prob, american, bankroll);
-  if(!r) return '';
-  const ev=parseFloat(r.ev);
-  const c=ev>3?'#4ade80':ev>0?'#86efac':ev>-5?'#fbbf24':'#f87171';
-  const kelly=ev>2?`<span class="green"> → $${r.bet}</span>`:'';
-  return `<div class="ev-result">
-    <span style="color:#475569">Modèle ${(prob*100).toFixed(1)}% · Book ${r.ip}%</span>
-    <span style="color:${c};font-weight:700">EV ${ev>=0?'+':''}${r.ev}%${kelly}</span></div>`;
-}
-function updateEV(inpId, prob, bankroll, outId){
-  const v=document.getElementById(inpId)?.value;
-  const o=document.getElementById(outId);
-  if(o) o.innerHTML = v ? evHtml(prob, v, bankroll) : '';
-}
-
-const SOC_MARKETS = [
-  {l:'Home Win',      k:'pHome'},     {l:'Draw',          k:'pDraw'},
-  {l:'Away Win',      k:'pAway'},     {l:'BTTS Oui',      k:'pBTTS'},
-  {l:'BTTS Non',      k:'pBTTSNo'},   {l:'Over 1.5',      k:'pOver15'},
-  {l:'Under 1.5',     k:'pUnder15'},  {l:'Over 2.5',      k:'pOver25'},
-  {l:'Under 2.5',     k:'pUnder25'},  {l:'Over 3.5',      k:'pOver35'},
-  {l:'Under 3.5',     k:'pUnder35'},  {l:'Home/Draw',     k:'pHomeOrDraw'},
-  {l:'Away/Draw',     k:'pAwayOrDraw'},
-];
-async function analyzeGame(){
-  const home=document.getElementById('sgHome').value.trim();
-  const away=document.getElementById('sgAway').value.trim();
-  const league=document.getElementById('sgLeague').value;
-  const bk=parseFloat(document.getElementById('sgBankroll').value)||200;
-  const st=document.getElementById('sgStatus');
-  const out=document.getElementById('sgResult');
-  if(!home||!away){st.textContent='⚠️ Entre les deux équipes';return;}
-  st.textContent='🔍 Dixon-Coles en cours (~25s)...'; out.innerHTML='';
-  try{
-    const res=await fetch(API+'/api/soccer/game',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({home,away,league})});
-    const d=await res.json();
-    if(d.status!=='SUCCESS') throw new Error(d.message);
-    const p=d.probs;
-    const cc=d.confidence==='high'?'#4ade80':'#fbbf24';
-    const mks=SOC_MARKETS.map((m,idx)=>{
-      const prob=p[m.k]; if(prob===undefined) return '';
-      const lbl=m.l.replace('Home',home).replace('Away',away);
-      return `<div style="margin-bottom:9px">
-        <div class="prob-row"><span>${lbl}</span><span style="font-weight:700;color:#4ade80">${(prob*100).toFixed(1)}%</span></div>
-        <div class="prob-bar" style="margin:3px 0 4px"><div class="prob-fill pf-over" style="width:${(prob*100).toFixed(0)}%"></div></div>
-        <input type="number" id="gm${idx}" placeholder="Cotes BetOnline (ex: -110, +150)"
-          oninput="updateEV('gm${idx}',${prob},${bk},'gmev${idx}')"
-          style="width:100%;background:#0a0e13;border:1px solid #334155;border-radius:5px;padding:6px;color:#fff;font-size:12px;font-family:inherit">
-        <div id="gmev${idx}"></div></div>`;
-    }).join('');
-    out.innerHTML=`<div class="card">
-      <div style="display:flex;justify-content:space-between;margin-bottom:9px">
-        <span style="font-weight:700">${home} vs ${away}</span>
-        <span style="color:${cc};font-size:10px;background:#ffffff11;padding:2px 7px;border-radius:4px">${d.confidence?.toUpperCase()} · Dixon-Coles</span>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:9px">
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center"><div style="font-size:18px;font-weight:700;color:#4ade80">${d.xgHome}</div><div style="font-size:9px;color:#475569">xG ${home}</div></div>
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center"><div style="font-size:18px;font-weight:700;color:#f87171">${d.xgAway}</div><div style="font-size:9px;color:#475569">xG ${away}</div></div>
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center">
-          <div style="font-size:10px;color:#4ade80">${d.formHome}</div>
-          <div style="font-size:10px;color:#f87171">${d.formAway}</div>
-          <div style="font-size:8px;color:#475569">Forme</div>
-        </div>
-      </div>
-      ${(d.keyFactors||[]).map(f=>`<div class="dr"><span style="color:#475569;font-size:10px">→ ${f}</span></div>`).join('')}
-      <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin:10px 0 8px">Marchés — Entre les cotes BetOnline</div>
-      ${mks}
-    </div>`;
-    st.textContent=`✅ xG: ${d.xgHome} - ${d.xgAway} · 13 marchés calculés`;
-  }catch(e){ st.textContent=''; out.innerHTML=`<div class="err">❌ ${e.message}</div>`; }
-}
-
-async function analyzePlayer(){
-  const player=document.getElementById('spPlayer').value.trim();
-  const market=document.getElementById('spMarket').value;
-  const line=parseFloat(document.getElementById('spLine').value)||1.5;
-  const league=document.getElementById('spLeague').value;
-  const bk=parseFloat(document.getElementById('spBankroll').value)||200;
-  const st=document.getElementById('spStatus');
-  const out=document.getElementById('spResult');
-  if(!player){st.textContent='⚠️ Entre le joueur';return;}
-  st.textContent='🔍 Poisson en cours (~10s)...'; out.innerHTML='';
-  try{
-    const res=await fetch(API+'/api/soccer/player',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player,market,line,league})});
-    const d=await res.json();
-    if(d.status!=='SUCCESS') throw new Error(d.message);
-    const cc=d.confidence==='HIGH'?'#4ade80':d.confidence==='MEDIUM'?'#60a5fa':'#fbbf24';
-    out.innerHTML=`<div class="card">
-      <div style="display:flex;justify-content:space-between;margin-bottom:9px">
-        <div><div style="font-weight:700">${d.player}</div><div style="font-size:11px;color:#475569">${market} · Ligne ${line} · ${d.appearances} apparitions</div></div>
-        <span style="color:${cc};font-size:10px;background:#ffffff11;padding:2px 7px;border-radius:4px">${d.confidence}</span>
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:9px">
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center"><div style="font-size:16px;font-weight:700;color:#4ade80">${d.seasonAvg}</div><div style="font-size:9px;color:#475569">Moy. saison</div></div>
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center"><div style="font-size:16px;font-weight:700;color:#60a5fa">${(d.overProb*100).toFixed(1)}%</div><div style="font-size:9px;color:#475569">P(Over ${line})</div></div>
-        <div style="flex:1;background:#0a0e13;border-radius:6px;padding:7px;text-align:center"><div style="font-size:16px;font-weight:700;color:#a78bfa">${(d.underProb*100).toFixed(1)}%</div><div style="font-size:9px;color:#475569">P(Under ${line})</div></div>
-      </div>
-      <div style="font-size:10px;color:#475569;margin-bottom:9px">${d.note}</div>
-      <div style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:.05em;margin-bottom:7px">Cotes BetOnline → EV + Kelly</div>
-      <div style="margin-bottom:8px">
-        <div class="prob-row"><span>Over ${line}</span><span style="color:#4ade80;font-weight:700">${(d.overProb*100).toFixed(1)}%</span></div>
-        <input type="number" id="spOv" placeholder="Cotes Over (ex: -115)" oninput="updateEV('spOv',${d.overProb},${bk},'spOvEV')"
-          style="width:100%;background:#0a0e13;border:1px solid #334155;border-radius:5px;padding:6px;color:#fff;font-size:12px;font-family:inherit;margin-top:4px">
-        <div id="spOvEV"></div>
-      </div>
-      <div>
-        <div class="prob-row"><span>Under ${line}</span><span style="color:#a78bfa;font-weight:700">${(d.underProb*100).toFixed(1)}%</span></div>
-        <input type="number" id="spUn" placeholder="Cotes Under (ex: -105)" oninput="updateEV('spUn',${d.underProb},${bk},'spUnEV')"
-          style="width:100%;background:#0a0e13;border:1px solid #334155;border-radius:5px;padding:6px;color:#fff;font-size:12px;font-family:inherit;margin-top:4px">
-        <div id="spUnEV"></div>
-      </div>
-    </div>`;
-    st.textContent=`✅ Poisson(λ=${d.seasonAvg}) · P(Over)=${(d.overProb*100).toFixed(1)}%`;
-  }catch(e){ st.textContent=''; out.innerHTML=`<div class="err">❌ ${e.message}</div>`; }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
