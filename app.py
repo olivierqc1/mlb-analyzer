@@ -1,23 +1,20 @@
-# app.py — Orchestrateur v4.1 — dispatch unique
+# app.py v4.3 — Soccer intégré comme 5ème sport dans le scanner
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 from datetime import datetime
 from stats import to_py
 
-from mlb    import mlb_bp,    scan_mlb,    mlb_actual_result
-from nba    import nba_bp,    scan_nba,    nba_actual_result
-from nhl    import nhl_bp,    scan_nhl,    nhl_actual_result
-from tennis import tennis_bp, scan_tennis, tennis_actual_result
-from soccer import soccer_bp
+from mlb    import scan_mlb,    mlb_actual_result
+from nba    import scan_nba,    nba_actual_result
+from nhl    import scan_nhl,    nhl_actual_result
+from tennis import scan_tennis, tennis_actual_result
+from soccer import soccer_bp,   scan_soccer
 
 app = Flask(__name__)
 CORS(app)
-
-# Blueprints pour les routes /api/soccer/*
 app.register_blueprint(soccer_bp)
 
-# ── Route unique pour tous les sports ─────────────────────────────────────────
 @app.route('/api/daily-opportunities', methods=['GET'])
 def daily_opportunities():
     try:
@@ -35,30 +32,34 @@ def daily_opportunities():
                     'message':'🏀 NBA: Aucun marché trouvé.','opportunities':[]})
         elif sport == 'nhl':
             opps, analyzed, ngames = scan_nhl(min_ev)
-            if opps and isinstance(opps[0], dict) and opps[0].get('_info'):
+            if opps and isinstance(opps[0],dict) and opps[0].get('_info'):
                 return jsonify({'status':'INFO','sport':'nhl',
                     'message':opps[0]['message'],'opportunities':[]})
         elif sport == 'tennis':
             opps, analyzed, ngames = scan_tennis(min_ev)
-            if opps and isinstance(opps[0], dict) and opps[0].get('_info'):
+            if opps and isinstance(opps[0],dict) and opps[0].get('_info'):
                 return jsonify({'status':'INFO','sport':'tennis',
                     'message':opps[0]['message'],'opportunities':[]})
+        elif sport == 'soccer':
+            opps, analyzed, ngames = scan_soccer(min_ev)
+            if not ngames:
+                return jsonify({'status':'INFO','sport':'soccer',
+                    'message':'⚽ Soccer: Aucun match trouvé sur The Odds API.','opportunities':[]})
         else:
             return jsonify({'status':'ERROR',
-                'message':f'Sport non supporté: {sport}. Options: mlb, nba, nhl, tennis'}), 400
+                'message':f'Sport inconnu: {sport}'}), 400
 
         return jsonify(to_py({
-            'status': 'SUCCESS', 'sport': sport, 'version': '4.1',
-            'total_games': ngames, 'players_analyzed': analyzed,
-            'opportunities_found': len(opps), 'opportunities': opps,
-            'scan_time': scan_time
+            'status':'SUCCESS','sport':sport,'version':'4.3',
+            'total_games':ngames,'players_analyzed':analyzed,
+            'opportunities_found':len(opps),'opportunities':opps,
+            'scan_time':scan_time
         }))
     except Exception as e:
         import traceback
         return jsonify({'status':'ERROR','message':str(e),
                         'trace':traceback.format_exc()[:600]}), 500
 
-# ── Route résolution bets ─────────────────────────────────────────────────────
 @app.route('/api/actual-result', methods=['GET'])
 def actual_result():
     try:
@@ -77,29 +78,27 @@ def actual_result():
     except Exception as e:
         return jsonify({'status':'ERROR','message':str(e)}), 500
 
-# ── Utilitaires ───────────────────────────────────────────────────────────────
 @app.route('/api/odds/usage', methods=['GET'])
 def odds_usage():
     import requests as req
     try:
         r = req.get('https://api.the-odds-api.com/v4/sports',
-                    params={'apiKey': os.environ.get('ODDS_API_KEY','')}, timeout=8)
-        return jsonify({'used': r.headers.get('x-requests-used','?'),
-                        'remaining': r.headers.get('x-requests-remaining','?')})
+                    params={'apiKey':os.environ.get('ODDS_API_KEY','')}, timeout=8)
+        return jsonify({'used':r.headers.get('x-requests-used','?'),
+                        'remaining':r.headers.get('x-requests-remaining','?')})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error':str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status':'healthy','version':'4.1',
-                    'sports':['mlb','nba','nhl','tennis','soccer'],
-                    'model':'Empirical hit rate + EV + Kelly 25%'})
+    return jsonify({'status':'healthy','version':'4.3',
+                    'sports':['mlb','nba','nhl','tennis','soccer']})
 
 @app.route('/')
 def home():
-    return jsonify({'app':'Multi-Sport Analyzer','version':'4.1'})
+    return jsonify({'app':'Multi-Sport Analyzer','version':'4.3'})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print('Multi-Sport Analyzer v4.1', flush=True)
+    print('Multi-Sport Analyzer v4.3', flush=True)
     app.run(host='0.0.0.0', port=port, debug=False)
