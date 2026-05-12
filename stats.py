@@ -70,9 +70,11 @@ def analyze(games, line):
     elif n >= 10: pros.append(f'🟡 {n} matchs')
     else: issues.append(f'❌ Seulement {n} matchs')
     hr_pct = round(hr*100,1)
-    if margin >= 0.15: pros.append(f'✅ Hit rate {hr_pct}% ({over_n}/{n})')
-    elif margin >= 0.07: pros.append(f'🟡 Hit rate {hr_pct}% ({over_n}/{n})')
-    else: issues.append(f'❌ Hit rate trop proche de 50% ({hr_pct}%)')
+    rec_pct = round((hr if rec=='OVER' else 1-hr)*100,1)
+    rec_n   = over_n if rec=='OVER' else under_n
+    if margin >= 0.15: pros.append(f'✅ Hit rate {rec}  {rec_pct}% ({rec_n}/{n})')
+    elif margin >= 0.07: pros.append(f'🟡 Hit rate {rec}  {rec_pct}% ({rec_n}/{n})')
+    else: issues.append(f'❌ Hit rate trop proche de 50% ({rec_pct}%)')
     if trend_ok and trend != 'stable': pros.append(f'✅ Trend récent confirme ({trend})')
     elif not trend_ok: issues.append(f'⚠️ Trend récent contredit la reco ({trend})')
     if grade == 'AVOID': issues.append('❌ Signal insuffisant')
@@ -90,7 +92,9 @@ def analyze(games, line):
         'n': n, 'mean': round(mean,2), 'wmean': round(wmean,2),
         'std': round(std,2), 'cons': round(cons,1),
         'l5': round(l5,2), 'l10': round(l10,2),
-        'hit_rate': round(hr,4), 'over_n': over_n, 'under_n': under_n,
+        'hit_rate': round(hr,4),
+        'rec_hit_rate': round(hr if rec=='OVER' else 1-hr, 4),
+        'over_n': over_n, 'under_n': under_n,
         'rec': rec, 'rec_prob': round(rec_prob,4),
         'trend': trend, 'l5_hr': round(l5_hr,4),
         'grade': grade, 'color': color, 'label': labels[grade],
@@ -142,6 +146,7 @@ def build_opp(player, sport, stat_type, stat_label, line, book, odds_price,
             'std': a.get('std',0), 'consistency': a.get('cons',50),
             'avg_last_5': a['l5'], 'avg_last_10': a['l10'],
             'hit_rate': round(a['hit_rate']*100,1),
+            'rec_hit_rate': round(a['rec_hit_rate']*100,1),
             'over_count': a['over_n'], 'under_count': a['under_n'],
             'games_analyzed': a['n'], 'trend': a['trend'],
         },
