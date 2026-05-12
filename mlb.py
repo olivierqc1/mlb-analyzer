@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request
 import requests as req, os, time, re
 from collections import Counter
 from datetime import datetime
-from stats import to_py, analyze, build_opp, calc_ev
+from stats import to_py, analyze, build_opp, calc_ev, walk_forward_backtest
 
 mlb_bp = Blueprint('mlb', __name__)
 MLB      = 'https://statsapi.mlb.com/api/v1'
@@ -154,7 +154,10 @@ def scan_mlb(stat_filter=None, min_ev=3.0):
                 if not a or a['grade'] == 'AVOID': continue
                 ev_val = calc_ev(a['rec_prob'], best['price'])
                 if ev_val is None or ev_val < min_ev: continue
-                opps.append(build_opp(pname, 'mlb', st, label, line, best['book'].upper(), best['price'], ev.get(pd['game_id'],gi), a))
+                opp = build_opp(pname, 'mlb', st, label, line, best['book'].upper(), best['price'], ev.get(pd['game_id'],gi), a)
+                bt = walk_forward_backtest(games_q)
+                if bt: opp['backtest'] = {'hit_rate':bt['hit_rate'],'roi_pct':bt['roi_pct'],'total_bets':bt['total_bets'],'profit_usd':bt['profit_usd']}
+                opps.append(opp)
             else:
                 pid = search_batter(pname)
                 if not pid: continue
@@ -167,7 +170,10 @@ def scan_mlb(stat_filter=None, min_ev=3.0):
                 ev_val = calc_ev(a['rec_prob'], best['price'])
                 if ev_val is None or ev_val < min_ev: continue
                 gi = ev.get(pd['game_id'],{'home_team':'','away_team':'','time':''})
-                opps.append(build_opp(pname, 'mlb', st, label, line, best['book'].upper(), best['price'], gi, a))
+                opp = build_opp(pname, 'mlb', st, label, line, best['book'].upper(), best['price'], gi, a)
+                bt = walk_forward_backtest(games)
+                if bt: opp['backtest'] = {'hit_rate':bt['hit_rate'],'roi_pct':bt['roi_pct'],'total_bets':bt['total_bets'],'profit_usd':bt['profit_usd']}
+                opps.append(opp)
     opps.sort(key=lambda x:({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3)))
     return opps, analyzed, len(pitchers)
 
@@ -195,3 +201,4 @@ def mlb_actual_result(player, stat_type, date_str):
     if not games: return jsonify({'status':'NOT_FOUND','message':f'Aucune donnée pour {player}'}),404
     g = next((x for x in games if x['date'][:10]==date_str[:10]),games[0]) if date_str else games[0]
     return jsonify({'status':'SUCCESS','player':player,'stat_type':stat_type,'date':g['date'][:10],'actual_value':g['stat']})
+
