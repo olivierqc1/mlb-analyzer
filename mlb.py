@@ -61,7 +61,8 @@ def get_gamelog(pid, stat_type):
     for season in [MLB_SEASON, MLB_SEASON-1]:
         data = _safe(f'{MLB}/people/{pid}/stats', params={
             'stats':'gameLog','season':season,'group':group,'gameType':'R'})
-        for s in (data or {}).get('stats',[{}])[0].get('splits',[]):
+        stats_list = (data or {}).get('stats') or [{}]
+        for s in stats_list[0].get('splits',[]):
             val = s.get('stat',{}).get(col)
             if val is None: continue
             entry = {'date':s.get('date',''),'stat':int(val)}
