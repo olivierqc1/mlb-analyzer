@@ -101,6 +101,13 @@ def analyze_scipy(games, line, stat_type='nba'):
     if line > 0 and (wmean/line < 0.35 or wmean/line > 3.5):
         return None
 
+    # Hard filters — rejette avant même de grader
+    sigma_ratio = cstd/line if line > 0 else 1.0
+    if cons < 40:
+        return None  # Trop inconsistant (Sam Merrill type)
+    if sigma_ratio > 0.8:
+        return None  # σ trop élevé vs ligne — imprévisible
+
     # Grade
     margin = abs(wmean-line); sigma_z = margin/cstd if cstd>0 else 0
     issues=[]; pros=[]
@@ -108,8 +115,8 @@ def analyze_scipy(games, line, stat_type='nba'):
     elif n>=8:  pros.append(f'🟡 {n} matchs')
     else:       issues.append(f'❌ Seulement {n} matchs')
     if cons>=65: pros.append(f'✅ Consistance {cons}%')
-    elif cons>=45: pros.append(f'🟡 Consistance {cons}%')
-    else:        issues.append(f'❌ Consistance {cons}%')
+    elif cons>=50: pros.append(f'🟡 Consistance {cons}%')
+    else:        issues.append(f'❌ Consistance {cons}% — trop irrégulier')
     if norm_res['verdict']=='NORMAL':    pros.append('✅ Distribution normale')
     elif norm_res['verdict']=='BORDERLINE': pros.append('🟡 Distribution approx. normale')
     else: issues.append('❌ Distribution non-normale')
@@ -169,12 +176,12 @@ def build_opp_nba(player, stat_type, label, line, book, price, gi, a):
             'hit_rate':round(a['hit_rate']*100,1),
             'rec_hit_rate':a['rec_hit_rate'],
             'over_count':a['over_n'],'under_count':a['under_n'],
+
+
             'games_analyzed':a['n'],'trend':a['trend'],
         },
         'statistical_validation':{
             'normality':a['normality'],
-
-
             'is_reliable':a['normality']['verdict']!='NON_NORMAL'
         },
         'recent_games':a['recent'],
