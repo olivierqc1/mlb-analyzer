@@ -146,15 +146,13 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
       <div class="sport-tab mlb active" onclick="setSport('mlb',this)">
         <span class="si">⚾</span><span class="sl">MLB</span><span class="ss">K · TB</span></div>
       <div class="sport-tab nba" onclick="setSport('nba',this)">
-
-
         <span class="si">🏀</span><span class="sl">NBA</span><span class="ss">Pts·Reb·Ast</span></div>
       <div class="sport-tab nhl" onclick="setSport('nhl',this)">
         <span class="si">🏒</span><span class="sl">NHL</span><span class="ss">SOG</span></div>
       <div class="sport-tab ten" onclick="setSport('tennis',this)">
         <span class="si">🎾</span><span class="sl">Tennis</span><span class="ss">Aces</span></div>
       <div class="sport-tab soc" onclick="setSport('soccer',this)">
-        <span class="si">⚽</span><span class="sl">Soccer</span><span class="ss">+EV Mkts</span></div>
+        <span class="si">⚽</span><span class="sl">Soccer</span><span class="ss">SOG·Shots</span></div>
     </div>
     <div class="stat-tabs" id="statTabs"></div>
     <div class="controls">
@@ -176,6 +174,8 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
   <!-- ── HISTORIQUE ── -->
   <div id="historyMode" style="display:none">
     <div id="histSummary"></div>
+
+
     <div class="hist-filters">
       <div class="hf active" onclick="filterHist('all',this)">Tous</div>
       <div class="hf" onclick="filterHist('pending',this)">⏳ Attente</div>
@@ -296,7 +296,6 @@ async function scan(){
     const sp = currentStat ? `&stat_type=${currentStat}` : '';
     st.textContent = `📊 Analyse ${currentSport.toUpperCase()} en cours...`;
     const res  = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEV}${sp}`);
-
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if(data.status==='INFO'){
@@ -353,6 +352,7 @@ function buildCard(o, i){
   const gi    = o.game_info||{};
   const mu    = gi.home_team&&gi.away_team ? `${gi.away_team} @ ${gi.home_team}` : '';
   const tr    = ds.trend==='up'?'📈':ds.trend==='down'?'📉':'➡️';
+
 
   const bars = games.slice(0,10).reverse().map(g =>
     `<div class="hbar ${g.stat>la.bookmaker_line?'hbar-over':'hbar-under'}" style="height:${Math.max(5,(g.stat/maxV)*100)}%">
@@ -445,8 +445,6 @@ async function resolveAll(){
   toast('✅ Tous résolus!');
 }
 
-
-
 // ── Historique ────────────────────────────────────────────────────────────────
 function filterHist(f,el){
   histFilter=f;
@@ -531,6 +529,7 @@ function renderBacktest(){
       <div style="font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase">Mes bets résolus</div>
       <div id="btManual"></div>
     </div>`;
+
   renderManualBets();
 }
 
@@ -585,6 +584,121 @@ async function runBacktest(){
       <div class="detail-sec"><div class="detail-title">Par lanceur (${data.players_backtested} testés)</div>${rows}</div>
       ${recent?`<div class="detail-sec"><div class="detail-title">15 derniers bets (${data.players[0]?.player||''})</div>${recent}</div>`:''}`;
   }catch(e){out.innerHTML=`<div class="err">❌ ${e.message}</div>`;}
+}
+
+// ── Soccer Props ──────────────────────────────────────────────────────────────
+function renderSoccerForm(){
+  const c = document.getElementById('scanContent');
+  document.getElementById('summary').style.display='none';
+  document.getElementById('scanStatus').textContent='';
+  c.innerHTML=`
+    <div class="card">
+      <div style="font-weight:700;color:#16a34a;margin-bottom:4px">⚽ Soccer Player Props</div>
+      <p style="font-size:11px;color:#64748b;margin-bottom:10px">Modèle empirique sur 15 derniers matchs — même approche que MLB.</p>
+      <select id="spLeague" class="soc-select">
+        <option>EPL</option><option>La Liga</option><option>Serie A</option>
+        <option>Bundesliga</option><option>Ligue 1</option><option>MLS</option>
+      </select>
+      <input id="spPlayer" class="soc-input" placeholder="Joueur (ex: Salah, Kane, Saka)">
+      <div style="display:flex;gap:8px">
+        <select id="spMarket" class="soc-select" style="flex:1;margin-bottom:0">
+          <option>Shots On Goal</option><option>Shots</option>
+        </select>
+        <input id="spLine" type="number" step="0.5" value="1.5"
+          class="soc-input" style="width:75px;margin-bottom:0">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="flex:1">
+          <div style="font-size:10px;color:#64748b;margin-bottom:3px">Cotes Over (BetOnline)</div>
+          <input id="spOv" type="number" class="soc-input" style="margin-bottom:0" placeholder="-115">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:10px;color:#64748b;margin-bottom:3px">Cotes Under (BetOnline)</div>
+          <input id="spUn" type="number" class="soc-input" style="margin-bottom:0" placeholder="-105">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <span style="font-size:12px;color:#64748b">Bankroll $</span>
+        <input id="spBk" type="number" value="200" class="soc-input" style="width:80px;margin-bottom:0">
+        <button onclick="analyzeSoccer()" class="btn btn-green" style="flex:1">⚡ Analyser</button>
+      </div>
+      <div id="spSt" class="status" style="margin-top:8px"></div>
+      <div id="spOut"></div>
+    </div>`;
+}
+
+async function analyzeSoccer(){
+  const player  = document.getElementById('spPlayer')?.value.trim();
+  const league  = document.getElementById('spLeague')?.value;
+  const market  = document.getElementById('spMarket')?.value;
+  const line    = parseFloat(document.getElementById('spLine')?.value||1.5);
+  const oddsOv  = document.getElementById('spOv')?.value;
+  const oddsUn  = document.getElementById('spUn')?.value;
+  const bankroll= parseFloat(document.getElementById('spBk')?.value||200);
+  const st=document.getElementById('spSt');
+  const out=document.getElementById('spOut');
+  if(!player){st.textContent='⚠️ Entre le joueur';return;}
+  st.textContent='🔍 API-Football (~20s, 17 calls)...'; out.innerHTML='';
+  try{
+    const res=await fetch(API+'/api/soccer/analyze',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({player,league,market,line,
+        odds_over:oddsOv?parseFloat(oddsOv):null,
+        odds_under:oddsUn?parseFloat(oddsUn):null,bankroll})
+    });
+    const d=await res.json();
+    if(d.status!=='SUCCESS'){
+      out.innerHTML=`<div class="err">❌ ${d.message}</div>`;
+      st.textContent=''; return;
+    }
+    const gc={A:'gb-a',B:'gb-b',C:'gb-c'}[d.grade]||'gb-c';
+    const recC=d.recommendation==='OVER'?'#4ade80':'#f87171';
+    const evRow=(evData,label)=>{
+      if(!evData||evData.ev===null) return '';
+      const c=evData.ev>3?'#4ade80':evData.ev>0?'#86efac':evData.ev>-5?'#fbbf24':'#f87171';
+      return `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #334155;font-size:12px">
+        <span style="color:#64748b">${label}</span>
+        <span style="color:${c};font-weight:700">EV ${evData.ev>=0?'+':''}${evData.ev}%${evData.kelly>0?' → $'+evData.bet_size:''}</span></div>`;
+    };
+    const bars=(d.recent_games||[]).map(g=>
+      `<div style="text-align:center;padding:5px 3px;border-radius:4px;min-width:28px;
+        background:${g.stat>line?'rgba(22,163,74,.3)':'rgba(220,38,38,.3)'};
+        color:${g.stat>line?'#4ade80':'#f87171'};font-size:12px;font-weight:700">${g.stat}</div>`
+    ).join('');
+    const tr=d.trend==='up'?'📈':d.trend==='down'?'📉':'➡️';
+    out.innerHTML=`
+      <div class="grade-banner ${gc}" style="margin-top:10px">
+        <div class="grade-val" style="color:${d.grade_color}">Grade ${d.grade} — ${d.grade_label}</div>
+        <ul class="pros">${(d.pros||[]).map(p=>`<li>${p}</li>`).join('')}</ul>
+        ${(d.issues||[]).length?`<ul class="issues">${d.issues.map(p=>`<li>${p}</li>`).join('')}</ul>`:''}
+      </div>
+      <div class="card" style="margin-top:0">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+          <div><div style="font-weight:700">${d.player}</div>
+            <div style="font-size:11px;color:#64748b">${market} · Ligne ${line} · ${d.games_analyzed} matchs</div></div>
+          <div style="text-align:center;padding:5px 9px;border-radius:7px;font-weight:700;font-size:12px;
+            background:${recC}22;color:${recC};border:1px solid ${recC}">${d.recommendation}<br>
+            <span style="font-size:10px">${d.rec_hit_rate}%</span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;background:#0a0e13;border-radius:6px;padding:6px;margin-bottom:8px">
+          <div style="text-align:center"><div style="color:#475569;font-size:9px">L5</div>
+            <div style="font-size:12px;font-weight:600;color:#60a5fa">${d.avg_last_5}</div></div>
+          <div style="text-align:center"><div style="color:#475569;font-size:9px">Moy</div>
+            <div style="font-size:12px;font-weight:600">${d.avg_overall}</div></div>
+          <div style="text-align:center"><div style="color:#475569;font-size:9px">Hit%▼</div>
+            <div style="font-size:12px;font-weight:600;color:${d.rec_hit_rate>=55?'#4ade80':d.rec_hit_rate<=45?'#f87171':'#fbbf24'}">${d.rec_hit_rate}%</div></div>
+          <div style="text-align:center"><div style="color:#475569;font-size:9px">Trend</div>
+            <div style="font-size:12px">${tr}</div></div>
+          <div style="text-align:center"><div style="color:#475569;font-size:9px">N</div>
+            <div style="font-size:12px;font-weight:600;color:#60a5fa">${d.games_analyzed}</div></div>
+        </div>
+        ${bars?`<div style="font-size:9px;color:#64748b;margin-bottom:4px">${d.games_analyzed} derniers matchs (15+ min)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:8px">${bars}</div>`:''}
+        ${evRow(d.over_ev,'Over '+line)}
+        ${evRow(d.under_ev,'Under '+line)}
+      </div>`;
+    st.textContent=`✅ ${d.player} · ${d.games_analyzed} matchs analysés`;
+  }catch(e){st.textContent='';out.innerHTML=`<div class="err">❌ ${e.message}</div>`;}
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
