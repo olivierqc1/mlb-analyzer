@@ -175,7 +175,6 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
   <div id="historyMode" style="display:none">
     <div id="histSummary"></div>
 
-
     <div class="hist-filters">
       <div class="hf active" onclick="filterHist('all',this)">Tous</div>
       <div class="hf" onclick="filterHist('pending',this)">⏳ Attente</div>
@@ -352,6 +351,7 @@ function buildCard(o, i){
   const gi    = o.game_info||{};
   const mu    = gi.home_team&&gi.away_team ? `${gi.away_team} @ ${gi.home_team}` : '';
   const tr    = ds.trend==='up'?'📈':ds.trend==='down'?'📉':'➡️';
+
 
 
   const bars = games.slice(0,10).reverse().map(g =>
