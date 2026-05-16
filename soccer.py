@@ -1,262 +1,376 @@
-# soccer.py v2 — Scanner simplifié, inspiré de ParlayEdge
-# Odds API uniquement pour les matchs → Dixon-Coles pure math
-# API-Football optionnel (si dispo, améliore xG; sinon fallback sur league avg)
-from flask import Blueprint, jsonify, request
-import os, math, time, re
+# soccer.py — Soccer Model : Dixon-Coles + Poisson props
+# Données : API-Football (FOOTBALL_API_KEY, déjà sur Render)
+# Coût : 0$ — free tier 100 calls/day amplement suffisant
+# Intégration app.py :
+#   En haut  → from soccer import soccer_bp
+#   Avant __main__ → app.register_blueprint(soccer_bp)
+
+from flask import Blueprint, request, jsonify
+import os, math, time
 import requests as req
-from stats import to_py, calc_ev, calc_kelly
 
 soccer_bp = Blueprint('soccer', __name__)
-ODDS_KEY  = os.environ.get('ODDS_API_KEY','')
-FB_KEY    = os.environ.get('FOOTBALL_API_KEY','')
-ODDS_BASE = 'https://api.the-odds-api.com/v4'
-FB_BASE   = 'https://v3.football.api-sports.io'
+FB_KEY   = os.environ.get('FOOTBALL_API_KEY', '')
+FB_BASE  = 'https://v3.football.api-sports.io'
 
-# Toutes les ligues soccer disponibles sur The Odds API
-SOCCER_LEAGUES = [
-    'soccer_epl',
-    'soccer_spain_la_liga',
-    'soccer_italy_serie_a',
-    'soccer_germany_bundesliga',
-    'soccer_france_ligue_one',
-    'soccer_uefa_champs_league',
-    'soccer_usa_mls',
-    'soccer_argentina_primera_division',
-    'soccer_england_championship',
-    'soccer_belgium_first_div',
-    'soccer_netherlands_eredivisie',
-    'soccer_portugal_primeira_liga',
-    'soccer_turkey_super_league',
-    'soccer_brazil_campeonato',
-    'soccer_mexico_ligamx',
-    'soccer_denmark_superliga',
-    'soccer_greece_super_league',
-    'soccer_australia_aleague',
-    'soccer_japan_j_league',
-]
-
-# League avg goals per game (stable)
-LEAGUE_AVG = {
-    'soccer_germany_bundesliga': 3.10,
-    'soccer_netherlands_eredivisie': 3.10,
-    'soccer_italy_serie_a': 2.70,
-    'soccer_epl': 2.60,
-    'soccer_france_ligue_one': 2.60,
-    'soccer_uefa_champs_league': 2.80,
-    'soccer_spain_la_liga': 2.50,
-    'soccer_usa_mls': 2.90,
-    'soccer_brazil_campeonato': 2.60,
-    'soccer_argentina_primera_division': 2.40,
+# League name → (api_football_id, season)
+LEAGUE_MAP = {
+    'La Liga': 140, 'EPL': 39, 'Serie A': 135, 'Bundesliga': 78,
+    'Ligue 1': 61, 'Champions League': 2, 'Belgium Pro': 144,
+    'Denmark Superliga': 119, 'Italy Serie B': 136, 'Greece SL': 197,
+    'Argentina LPF': 128, 'Saudi Pro': 307, 'J.League': 98,
+    'MLS': 253, 'Portugal Primeira': 94, 'Eng Championship': 40,
 }
-DEFAULT_AVG = 2.60
-HOME_ADV    = 1.15
-_cache      = {}
+# Historical league average goals per game (stable across seasons)
+LEAGUE_AVG_GOALS = {
+    140: 2.50, 39: 2.60, 135: 2.70, 78: 3.10, 61: 2.60,
+    2: 2.80, 144: 2.90, 119: 2.80, 136: 2.50, 197: 2.60,
+    128: 2.40, 307: 2.80, 98: 2.60, 253: 2.90, 94: 2.60, 40: 2.40,
+}
+SEASON = 2024
+HOME_ADV = 1.15  # home advantage factor
+
+TEAM_CACHE   = {}
+PLAYER_CACHE = {}
+
+# ── API helper ────────────────────────────────────────────────────────────────
+def fb(endpoint, params=None):
+    if not FB_KEY:
+        raise ValueError('FOOTBALL_API_KEY manquant sur Render')
+    params = params or {}
+    params['season'] = params.get('season', SEASON)
+    try:
+        r = req.get(f'{FB_BASE}/{endpoint.lstrip("/")}',
+                    params=params,
+                    headers={'x-apisports-key': FB_KEY},
+                    timeout=12)
+        r.raise_for_status()
+        data = r.json()
+        remaining = r.headers.get('x-ratelimit-requests-remaining', '?')
+        print(f"  FB /{endpoint}: {len(data.get('response',[]))} results | remaining={remaining}")
+        return data.get('response', [])
+    except Exception as e:
+        print(f"  FB error /{endpoint}: {e}")
+        return []
+
+# ── Team helpers ──────────────────────────────────────────────────────────────
+def get_team_id(name, league_id):
+    key = f'{name}_{league_id}'
+    if key in TEAM_CACHE: return TEAM_CACHE[key]
+    results = fb('teams', {'name': name, 'league': league_id})
+    if not results:
+        # Try without league filter
+        results = fb('teams', {'name': name})
+    if not results: return None
+    tid = results[0]['team']['id']
+    TEAM_CACHE[key] = tid
+    return tid
+
+def get_team_stats(team_id, league_id):
+    """Returns (goals_scored_avg, goals_conceded_avg) per game."""
+    key = f'stats_{team_id}_{league_id}'
+    if key in TEAM_CACHE: return TEAM_CACHE[key]
+    results = fb('teams/statistics', {'team': team_id, 'league': league_id})
+    if not results: return None, None
+    s = results  # teams/statistics returns a single object, not a list
+    # If response is a list of 1
+    if isinstance(results, list): s = results[0] if results else {}
+    try:
+        goals_for  = s.get('goals', {}).get('for', {})
+        goals_ag   = s.get('goals', {}).get('against', {})
+        # Prefer 'average' total, fallback to computing from total/played
+        avg_for = goals_for.get('average', {}).get('total')
+        avg_ag  = goals_ag.get('average', {}).get('total')
+        if avg_for is None:
+            total_for    = goals_for.get('total', {}).get('total', 0) or 0
+            fixtures_pl  = s.get('fixtures', {}).get('played', {}).get('total', 1) or 1
+            avg_for = total_for / fixtures_pl
+        else:
+            avg_for = float(avg_for)
+        if avg_ag is None:
+            total_ag    = goals_ag.get('total', {}).get('total', 0) or 0
+            fixtures_pl = s.get('fixtures', {}).get('played', {}).get('total', 1) or 1
+            avg_ag = total_ag / fixtures_pl
+        else:
+            avg_ag = float(avg_ag)
+        TEAM_CACHE[key] = (round(avg_for, 3), round(avg_ag, 3))
+        return TEAM_CACHE[key]
+    except Exception as e:
+        print(f"  get_team_stats parse error: {e}")
+        return None, None
+
+def get_recent_form(team_id, league_id, n=5):
+    """Returns form string like WWDLW (most recent first)."""
+    results = fb('fixtures', {'team': team_id, 'league': league_id, 'last': n})
+    if not results: return '-----'
+    form = []
+    for fix in sorted(results, key=lambda x: x.get('fixture',{}).get('date',''), reverse=True):
+        teams  = fix.get('teams', {})
+        goals  = fix.get('goals', {})
+        home   = teams.get('home', {})
+        is_home = home.get('id') == team_id
+        gf = goals.get('home') if is_home else goals.get('away')
+        ga = goals.get('away') if is_home else goals.get('home')
+        if gf is None or ga is None: continue
+        form.append('W' if gf > ga else ('D' if gf == ga else 'L'))
+    return ''.join(form) if form else '-----'
 
 # ── Dixon-Coles ───────────────────────────────────────────────────────────────
-def pmf(k, lam):
+def _pmf(k, lam):
     if lam <= 0 or k < 0: return 0.0
     try:
-        lp = -lam + k*math.log(lam)
-        for i in range(1,k+1): lp -= math.log(i)
-        return math.exp(lp)
+        log_p = -lam + k * math.log(lam)
+        for i in range(1, k + 1): log_p -= math.log(i)
+        return math.exp(log_p)
     except: return 0.0
 
-def tau(i, j, lh, la, rho=-0.13):
-    if i==0 and j==0: return max(0.01, 1-lh*la*rho)
-    if i==1 and j==0: return 1+la*rho
-    if i==0 and j==1: return 1+lh*rho
-    if i==1 and j==1: return 1-rho
+def _tau(i, j, lh, la, rho=-0.13):
+    if i == 0 and j == 0: return max(0.01, 1 - lh * la * rho)
+    if i == 1 and j == 0: return 1 + la * rho
+    if i == 0 and j == 1: return 1 + lh * rho
+    if i == 1 and j == 1: return 1 - rho
     return 1.0
 
 def dixon_coles(lh, la):
     lh = max(0.3, min(4.5, float(lh)))
     la = max(0.3, min(4.5, float(la)))
-    ph=pd=pa=btts=o15=o25=o35=0.0
+    ph = pd = pa = btts = o15 = o25 = o35 = 0.0
     for i in range(9):
         for j in range(9):
-            p = pmf(i,lh)*pmf(j,la)*tau(i,j,lh,la)
-            if i>j: ph+=p
-            elif i==j: pd+=p
-            else: pa+=p
-            if i>0 and j>0: btts+=p
-            if i+j>1: o15+=p
-            if i+j>2: o25+=p
-            if i+j>3: o35+=p
-    return {'home':round(ph,4),'draw':round(pd,4),'away':round(pa,4),
-            'btts_yes':round(btts,4),'btts_no':round(1-btts,4),
-            'over15':round(o15,4),'under15':round(1-o15,4),
-            'over25':round(o25,4),'under25':round(1-o25,4),
-            'over35':round(o35,4),'under35':round(1-o35,4)}
+            p = _pmf(i, lh) * _pmf(j, la) * _tau(i, j, lh, la)
+            if i > j:    ph += p
+            elif i == j: pd += p
+            else:        pa += p
+            if i > 0 and j > 0: btts += p
+            if i + j > 1: o15 += p
+            if i + j > 2: o25 += p
+            if i + j > 3: o35 += p
+    return {
+        'pHome': round(ph, 4),      'pDraw': round(pd, 4),      'pAway': round(pa, 4),
+        'pBTTS': round(btts, 4),    'pBTTSNo': round(1-btts, 4),
+        'pOver15': round(o15, 4),   'pUnder15': round(1-o15, 4),
+        'pOver25': round(o25, 4),   'pUnder25': round(1-o25, 4),
+        'pOver35': round(o35, 4),   'pUnder35': round(1-o35, 4),
+        'pHomeOrDraw': round(ph+pd, 4), 'pAwayOrDraw': round(pa+pd, 4),
+    }
 
-# ── Odds API ──────────────────────────────────────────────────────────────────
-def get_active_soccer_sports():
-    """Liste les sports soccer actifs sur Odds API."""
-    if not ODDS_KEY: return []
-    ck = 'active_soccer'
-    if ck in _cache: return _cache[ck]
-    try:
-        r = req.get(f'{ODDS_BASE}/sports',
-                    params={'apiKey':ODDS_KEY}, timeout=10)
-        if r.status_code != 200: return SOCCER_LEAGUES
-        active = {s['key'] for s in r.json() if s.get('active')}
-        result = [l for l in SOCCER_LEAGUES if l in active]
-        print(f"Soccer active leagues: {result}")
-        _cache[ck] = result
-        return result or SOCCER_LEAGUES  # fallback
-    except Exception as e:
-        print(f"get_active_soccer_sports error: {e}")
-        return SOCCER_LEAGUES
-
-def get_events_with_odds(sport_key):
-    """Retourne événements + h2h + totals en un seul appel."""
-    if not ODDS_KEY: return []
-    try:
-        r = req.get(f'{ODDS_BASE}/sports/{sport_key}/odds', params={
-            'apiKey':ODDS_KEY,
-            'regions':'eu,uk,us',
-            'markets':'h2h,totals',
-            'oddsFormat':'american',
-            'dateFormat':'iso'
-        }, timeout=15)
-        print(f"  {sport_key}: HTTP {r.status_code}, remaining={r.headers.get('x-requests-remaining','?')}")
-        if r.status_code == 200:
-            events = r.json()
-            print(f"  → {len(events)} events")
-            return events
-        return []
-    except Exception as e:
-        print(f"  get_events_with_odds {sport_key}: {e}")
-        return []
-
-
-
-def parse_best_odds(event):
-    """Extrait les meilleures cotes par outcome (highest = most favorable)."""
-    best = {}
-    home = event.get('home_team','')
-    away = event.get('away_team','')
-    for bk in event.get('bookmakers',[]):
-        for mk in bk.get('markets',[]):
-            mkey = mk['key']
-            for oc in mk.get('outcomes',[]):
-                name  = oc.get('name','')
-                price = oc.get('price',-110)
-                point = oc.get('point')
-                if mkey == 'h2h':
-                    if name == home:    k = 'home'
-                    elif name == away:  k = 'away'
-                    elif name == 'Draw': k = 'draw'
-                    else: continue
-                elif mkey == 'totals' and point is not None:
-                    if   name=='Over'  and abs(point-1.5)<0.1: k='over15'
-                    elif name=='Under' and abs(point-1.5)<0.1: k='under15'
-                    elif name=='Over'  and abs(point-2.5)<0.1: k='over25'
-                    elif name=='Under' and abs(point-2.5)<0.1: k='under25'
-                    elif name=='Over'  and abs(point-3.5)<0.1: k='over35'
-                    elif name=='Under' and abs(point-3.5)<0.1: k='under35'
-                    else: continue
-                else: continue
-                if k not in best or price > best[k]:
-                    best[k] = price
-    return best
-
-# ── Scanner ───────────────────────────────────────────────────────────────────
-MARKET_LABELS = {
-    'home':'Home Win','draw':'Draw','away':'Away Win',
-    'btts_yes':'BTTS Oui','btts_no':'BTTS Non',
-    'over15':'Over 1.5','under15':'Under 1.5',
-    'over25':'Over 2.5','under25':'Under 2.5',
-    'over35':'Over 3.5','under35':'Under 3.5',
+# ── Player helpers ────────────────────────────────────────────────────────────
+MARKET_STAT = {
+    'Shots On Goal': ('shots', 'on'),
+    'Shots':         ('shots', 'total'),
+    'Goals':         ('goals', 'total'),
+    'Assists':       ('goals', 'assists'),
+    'Cards':         ('cards', 'yellow'),
 }
 
-def scan_soccer(min_ev=3.0):
-    opps=[]; ngames=0; analyzed=0
-    active = get_active_soccer_sports()
-    print(f"Scanning {len(active)} soccer leagues...")
+def get_player_avg(name, league_id, market):
+    key = f'{name}_{league_id}_{market}'
+    if key in PLAYER_CACHE: return PLAYER_CACHE[key]
+    results = fb('players', {'search': name, 'league': league_id})
+    if not results:
+        results = fb('players', {'search': name.split()[-1], 'league': league_id})
+    if not results: return None, None, None
+    # Find best name match
+    player_data = None
+    for r in results:
+        pname = r.get('player', {}).get('name', '').lower()
+        if name.lower().split()[-1] in pname:
+            player_data = r; break
+    if not player_data: player_data = results[0]
+    player_id   = player_data['player']['id']
+    player_name = player_data['player']['name']
+    stats = player_data.get('statistics', [{}])[0] if player_data.get('statistics') else {}
+    stat_keys = MARKET_STAT.get(market, ('shots', 'on'))
+    cat  = stats.get(stat_keys[0], {})
+    val  = cat.get(stat_keys[1]) if cat else None
+    apps = stats.get('games', {}).get('appearences') or stats.get('games', {}).get('appearances')
+    if val is None or not apps or apps == 0:
+        PLAYER_CACHE[key] = (player_name, None, apps)
+        return player_name, None, apps
+    avg = round(float(val) / float(apps), 3)
+    PLAYER_CACHE[key] = (player_name, avg, int(apps))
+    return player_name, avg, int(apps)
 
-    for sport_key in active:
-        events = get_events_with_odds(sport_key)
-        if not events: continue
-        ngames += len(events)
-        lg_avg  = LEAGUE_AVG.get(sport_key, DEFAULT_AVG)
-        half    = lg_avg / 2
+def poisson_over(avg, line):
+    """P(X >= ceil(line)) using Poisson distribution."""
+    if not avg or avg <= 0: return 0.5
+    threshold = math.ceil(line)  # Over 1.5 means >= 2
+    p_under = sum(_pmf(k, avg) for k in range(threshold))
+    return round(max(0.02, min(0.98, 1 - p_under)), 4)
 
-        for event in events[:8]:  # Max 8 matchs par ligue
-            home = event.get('home_team','')
-            away = event.get('away_team','')
-            gt   = event.get('commence_time','')
-            odds = parse_best_odds(event)
-            if not odds: continue
+# ── EV + Kelly ────────────────────────────────────────────────────────────────
+def calc_ev(prob, american):
+    try:
+        a   = float(american)
+        dec = a/100+1 if a >= 0 else 100/abs(a)+1
+        return round((prob * dec - 1) * 100, 2)
+    except: return None
 
-            # xG basé sur league avg + home advantage (sans API-Football)
-            # Simple mais honnête — pas de fausse précision
-            xg_h = round(half * HOME_ADV, 3)
-            xg_a = round(half / HOME_ADV, 3)
-            probs = dixon_coles(xg_h, xg_a)
-            analyzed += 1
+def calc_kelly(prob, american, fraction=0.25):
+    try:
+        a   = float(american)
+        dec = a/100+1 if a >= 0 else 100/abs(a)+1
+        b   = dec - 1; q = 1 - prob
+        k   = (prob * b - q) / b
+        return round(max(0, k * fraction) * 100, 2)
+    except: return 0.0
 
-            gi = {'home_team':home,'away_team':away,'time':gt,
-                  'xgHome':xg_h,'xgAway':xg_a,'league':sport_key}
+# ── Routes ────────────────────────────────────────────────────────────────────
+@soccer_bp.route('/api/soccer/game', methods=['POST'])
+def soccer_game():
+    try:
+        d      = request.get_json()
+        home   = d.get('home', '').strip()
+        away   = d.get('away', '').strip()
+        league = d.get('league', 'La Liga').strip()
+        if not home or not away:
+            return jsonify({'status': 'ERROR', 'message': 'home et away requis'}), 400
+        lid = LEAGUE_MAP.get(league)
+        if not lid:
+            return jsonify({'status': 'ERROR', 'message': f'Ligue inconnue: {league}'}), 400
+        league_avg = LEAGUE_AVG_GOALS.get(lid, 2.6)
 
-            for k, model_prob in probs.items():
-                if k not in odds or k not in MARKET_LABELS: continue
-                american = odds[k]
-                ev = calc_ev(model_prob, american)
-                if ev is None or ev < min_ev: continue
-                kelly = calc_kelly(model_prob, american)
-                a = abs(american)
-                implied = a/(a+100) if american < 0 else 100/(american+100)
+        # Fetch team IDs
+        home_id = get_team_id(home, lid)
+        time.sleep(0.3)
+        away_id = get_team_id(away, lid)
+        time.sleep(0.3)
+        if not home_id or not away_id:
+            return jsonify({'status': 'ERROR',
+                'message': f'Équipe non trouvée: {"home" if not home_id else "away"}. Vérifie l\'orthographe.'}), 404
 
-                if ev >= 8:    grade,color = 'A','#4ade80'
-                elif ev >= 5:  grade,color = 'B','#86efac'
-                else:          grade,color = 'C','#fbbf24'
-
-                lbl = MARKET_LABELS[k]
-                opps.append({
-                    'player': f'{home} vs {away}',
-                    'sport': 'soccer',
-                    'stat_type': k,
-                    'stat_label': lbl,
-                    'game_info': gi,
-                    'quality': {
-                        'grade':grade,'color':color,
-                        'label':f'{"🟢 BET" if grade in ("A","B") else "🟡 PRUDENCE"} — EV {ev:+.1f}%',
-                        'pros':[f'✅ Modèle: {round(model_prob*100,1)}% vs Book: {round(implied*100,1)}%',
-                                f'✅ Dixon-Coles | xG {xg_h}-{xg_a}'],
-                        'issues':[]
-                    },
-                    'line_analysis':{
-                        'bookmaker_line':0,'bookmaker':'BEST',
-                        'recommendation':'BET',
-                        'edge':round(ev,1),
-                        'over_probability':round(model_prob*100,1),
-                        'under_probability':round((1-model_prob)*100,1),
-                        'kelly_criterion':kelly,
-                        'actual_odds':american,
-                    },
-                    'deep_stats':{
-                        'mean':xg_h,'weighted_mean':xg_a,
-                        'std':0,'consistency':0,
-                        'avg_last_5':round(model_prob*100,1),
-                        'avg_last_10':round(implied*100,1),
-                        'hit_rate':round(model_prob*100,1),
-                        'rec_hit_rate':round(model_prob*100,1),
-                        'over_count':0,'under_count':0,
-                        'games_analyzed':0,'trend':'stable',
-                    },
-                    'statistical_validation':{'is_reliable':grade in ('A','B')},
-                    'recent_games':[],
-                })
-
+        # Fetch team stats
+        home_scored, home_conceded = get_team_stats(home_id, lid)
+        time.sleep(0.3)
+        away_scored, away_conceded = get_team_stats(away_id, lid)
         time.sleep(0.3)
 
-    opps.sort(key=lambda x:({'A':0,'B':1,'C':2}.get(x['quality']['grade'],3),
-                             -x['line_analysis']['edge']))
-    print(f"Soccer scan done: {ngames} games, {analyzed} analyzed, {len(opps)} opps")
-    return opps, analyzed, ngames
+        # Fallback to league average if stats missing
+        home_scored   = home_scored   or league_avg / 2
+        home_conceded = home_conceded or league_avg / 2
+        away_scored   = away_scored   or league_avg / 2
+        away_conceded = away_conceded or league_avg / 2
+
+        # Dixon-Coles expected goals
+        # λ_home = attack_home * defense_away * home_advantage * league_avg/2
+        # Strengths are relative to league average (each side ~league_avg/2)
+        half_avg      = league_avg / 2
+        attack_home   = home_scored   / half_avg
+        defense_home  = home_conceded / half_avg
+        attack_away   = away_scored   / half_avg
+        defense_away  = away_conceded / half_avg
+
+        xg_home = round(attack_home * defense_away * HOME_ADV * half_avg, 3)
+        xg_away = round(attack_away * defense_home * (1/HOME_ADV) * half_avg, 3)
+        probs   = dixon_coles(xg_home, xg_away)
+
+        # Recent form (optional, 2 more API calls)
+        form_home = get_recent_form(home_id, lid)
+        time.sleep(0.2)
+        form_away = get_recent_form(away_id, lid)
+
+        confidence = 'high' if home_scored and away_scored else 'low'
+
+        return jsonify({
+            'status': 'SUCCESS',
+            'home': home, 'away': away, 'league': league,
+            'xgHome': xg_home, 'xgAway': xg_away,
+            'homeStats': {'scored': home_scored, 'conceded': home_conceded},
+            'awayStats': {'scored': away_scored, 'conceded': away_conceded},
+            'formHome': form_home, 'formAway': form_away,
+            'confidence': confidence, 'probs': probs,
+            'model': 'Dixon-Coles',
+            'keyFactors': [
+                f'{home}: {home_scored:.2f} buts/match, {home_conceded:.2f} encaissés',
+                f'{away}: {away_scored:.2f} buts/match, {away_conceded:.2f} encaissés',
+                f'xG calculé avec avantage domicile x{HOME_ADV}'
+            ]
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'status': 'ERROR', 'message': str(e),
+                        'trace': traceback.format_exc()[:400]}), 500
+
+@soccer_bp.route('/api/soccer/player', methods=['POST'])
+def soccer_player():
+    try:
+        d      = request.get_json()
+        player = d.get('player', '').strip()
+        market = d.get('market', 'Shots On Goal').strip()
+        line   = float(d.get('line', 1.5))
+        league = d.get('league', 'La Liga').strip()
+        if not player:
+            return jsonify({'status': 'ERROR', 'message': 'player requis'}), 400
+        lid = LEAGUE_MAP.get(league)
+        if not lid:
+            return jsonify({'status': 'ERROR', 'message': f'Ligue inconnue: {league}'}), 400
+
+        player_name, avg, apps = get_player_avg(player, lid, market)
+
+        if avg is None:
+            return jsonify({'status': 'ERROR',
+                'message': f'Stat "{market}" non trouvée pour {player_name or player}. '
+                           f'Essaie un autre marché ou vérifie le nom.'}), 404
+
+        # Poisson model
+        over_p  = poisson_over(avg, line)
+        under_p = round(1 - over_p, 4)
+
+        # Confidence based on appearances
+        if apps and apps >= 20: conf = 'HIGH'
+        elif apps and apps >= 10: conf = 'MEDIUM'
+        else: conf = 'LOW'
+
+        # Expected hit count
+        hit_count_est = round(over_p * (apps or 0))
+
+        return jsonify({
+            'status': 'SUCCESS',
+            'player': player_name or player,
+            'market': market, 'line': line,
+            'seasonAvg': avg, 'appearances': apps,
+            'hitCountEst': hit_count_est,
+            'overProb': over_p, 'underProb': under_p,
+            'confidence': conf,
+            'model': 'Poisson',
+            'note': f'Poisson(λ={avg}) sur {apps} apparitions — P(>={math.ceil(line)})={round(over_p*100,1)}%'
+        })
+    except Exception as e:
+        import traceback
+        return jsonify({'status': 'ERROR', 'message': str(e),
+                        'trace': traceback.format_exc()[:400]}), 500
+
+@soccer_bp.route('/api/soccer/ev', methods=['POST'])
+def soccer_ev():
+    try:
+        d   = request.get_json()
+        prob = float(d['prob'])
+        odds = d['odds']
+        bk   = float(d.get('bankroll', 200))
+        e    = calc_ev(prob, odds)
+        k    = calc_kelly(prob, odds)
+        a    = float(odds)
+        ip   = abs(a)/(abs(a)+100) if a < 0 else 100/(a+100)
+        return jsonify({
+            'status': 'SUCCESS',
+            'ev': e, 'kelly_pct': k,
+            'bet_size': round(bk * k / 100, 2),
+            'implied_prob': round(ip, 4),
+            'should_bet': e is not None and e > 2.0
+        })
+    except Exception as e:
+        return jsonify({'status': 'ERROR', 'message': str(e)}), 500
 
 @soccer_bp.route('/api/soccer/health', methods=['GET'])
 def soccer_health():
-    active = get_active_soccer_sports()
-    return jsonify({'status':'healthy','active_leagues':len(active),
-                    'leagues':active,'odds_key':'ok' if ODDS_KEY else 'MISSING'})
+    key_ok = bool(FB_KEY)
+    return jsonify({
+        'status': 'healthy',
+        'model': 'Dixon-Coles + Poisson',
+        'data_source': 'API-Football',
+        'football_api_key': 'configured' if key_ok else 'MISSING — ajoute FOOTBALL_API_KEY sur Render',
+        'cost': '$0 — free tier 100 calls/day',
+        'calls_per_game_analysis': '~8',
+        'calls_per_player_analysis': '~2',
+    })
+
