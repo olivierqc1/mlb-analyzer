@@ -51,7 +51,7 @@ def normality_tests(vals):
     r.update({'verdict':v,'verdict_label':l,'confidence_penalty':p})
     return r
 
-def analyze_scipy(games, line, stat_type='nba'):
+def analyze_scipy(games, line, stat_type='nba', opp_abbr=None, is_home=True, player_id=None, stat_col='pts'):
     if len(games) < 5: return None
     vals  = np.array([g['stat'] for g in games], dtype=float)
     n     = len(vals)
@@ -68,9 +68,13 @@ def analyze_scipy(games, line, stat_type='nba'):
     total_w = sum(ws)
     wmean = sum(g['stat']*w for g,w in zip(games,ws))/total_w if total_w else mean
 
+    # Context: def rating + home/away
+    adj_mean = wmean; total_adj = 0.0; ctx = {}
+    if opp_abbr and player_id:
+        adj_mean, total_adj, ctx = compute_context_adj(wmean, opp_abbr, is_home, player_id, stat_col)
     norm_res = normality_tests(vals)
     if cstd > 0:
-        over_p = float((1-scipy_stats.norm.cdf(line+0.5, wmean, cstd))*100)
+        over_p = float((1-scipy_stats.norm.cdf(line+0.5, adj_mean, cstd))*100)
     else:
         over_p = float(np.sum(vals>line)/n*100)
     under_p = 100.0-over_p
@@ -148,6 +152,7 @@ def analyze_scipy(games, line, stat_type='nba'):
         'edge':round(adj_edge,1),'raw_edge':round(raw_edge,1),
         'kelly':round(kelly,1),'normality':norm_res,'line':line,
         'trend':'stable',
+        'adj_mean':round(adj_mean,2),'total_adj':round(total_adj,2),'ctx':ctx,
         'quality':{'grade':grade,'color':color,'label':labels[grade],
                    'pros':pros,'issues':issues},
         'recent':[{'date':g.get('date','')[:10],'stat':g['stat']} for g in games[:10]]
@@ -176,8 +181,6 @@ def build_opp_nba(player, stat_type, label, line, book, price, gi, a):
             'hit_rate':round(a['hit_rate']*100,1),
             'rec_hit_rate':a['rec_hit_rate'],
             'over_count':a['over_n'],'under_count':a['under_n'],
-
-
             'games_analyzed':a['n'],'trend':a['trend'],
         },
         'statistical_validation':{
@@ -210,6 +213,8 @@ def _parse_min(s):
         p=str(s).split(':')
         return float(p[0])+(float(p[1])/60 if len(p)>1 else 0)
     except: return 0.0
+
+
 
 def get_gamelog(player_id, stat_col, opp_abbr=None):
     nba_col={'pts':'PTS','reb':'REB','ast':'AST'}.get(stat_col,stat_col.upper())
@@ -278,6 +283,71 @@ def get_opp_abbr(player_name, home_team, away_team):
     except Exception as e:
         print(f'get_opp_abbr error: {e}'); return None
 
+# -- Defensive rating + home/away adjustments ---------------------------------
+def get_team_def_rating(team_abbr):
+    key = f"def_{team_abbr}"
+    if key in _cache: return _cache[key]
+    try:
+        from nba_api.stats.endpoints import leaguedashteamstats
+        stats = leaguedashteamstats.LeagueDashTeamStats(
+            season=NBA_SEASON,
+            measure_type_simple_abbreviation="Defense",
+            timeout=15)
+        df = stats.get_data_frames()[0]
+        time.sleep(0.3)
+        for _, row in df.iterrows():
+            if str(row.get("TEAM_ABBREVIATION","")).upper() == team_abbr.upper():
+                drtg = float(row.get("DEF_RATING", 113.5))
+                _cache[key] = drtg; return drtg
+    except Exception as e:
+        print(f"def_rating error {team_abbr}: {e}")
+    return None
+
+def get_home_away_split(player_id, stat_col):
+    key = f"split_{player_id}_{stat_col}"
+    if key in _cache: return _cache[key]
+    try:
+        nba_col = {"pts":"PTS","reb":"REB","ast":"AST"}.get(stat_col, stat_col.upper())
+        gl = playergamelog.PlayerGameLog(player_id=player_id, season=NBA_SEASON,
+            season_type_all_star="Regular Season", timeout=20)
+        df = gl.get_data_frames()[0]
+        time.sleep(0.4)
+        home_v, away_v = [], []
+        for _, row in df.iterrows():
+            if _parse_min(row.get("MIN",0)) < MIN_MINUTES: continue
+            val = row.get(nba_col)
+            if val is None: continue
+            try: vi = int(float(val))
+            except: continue
+            if "vs." in str(row.get("MATCHUP","")): home_v.append(vi)
+            else: away_v.append(vi)
+        ha = (round(sum(home_v)/len(home_v),2) if home_v else None,
+              round(sum(away_v)/len(away_v),2) if away_v else None)
+        _cache[key] = ha; return ha
+    except Exception as e:
+        print(f"home_away error: {e}"); return None, None
+
+def compute_context_adj(wmean, opp_abbr, is_home, player_id, stat_col):
+    total_adj = 0.0; ctx = {}
+    # 1. Defensive rating
+    if opp_abbr:
+        drtg = get_team_def_rating(opp_abbr)
+        if drtg:
+            adj = round((drtg - 113.5) * 0.05, 2)
+            total_adj += adj
+            ctx["def_rating"] = {"opp":opp_abbr,"drtg":round(drtg,1),"adj":adj,
+                "label":f"DEF {round(drtg,1)} vs moy 113.5 -> {adj:+.1f}"}
+    # 2. Home/Away
+    home_avg, away_avg = get_home_away_split(player_id, stat_col)
+    if home_avg and away_avg:
+        loc = home_avg if is_home else away_avg
+        adj = round(max(-3.0, min(3.0, loc - wmean)), 2)
+        total_adj += adj
+        ctx["home_away"] = {"is_home":is_home,"home":home_avg,"away":away_avg,
+            "loc":loc,"adj":adj,
+            "label":f"{"Dom" if is_home else "Ext"}: {loc} vs moy {round(wmean,1)}"}
+    return round(wmean + total_adj, 2), round(total_adj, 2), ctx
+
 def get_odds_props(market):
     if not ODDS_KEY: return {},{}
     try:
@@ -340,7 +410,7 @@ def scan_nba(stat_filter=None, min_ev=3.0):
             games=get_gamelog(pid,col,opp_abbr=opp_abbr)
             if not games or len(games)<8: continue
             analyzed+=1
-            a=analyze_scipy(games,line)
+            a=analyze_scipy(games,line,opp_abbr=opp_abbr,is_home=True,player_id=pid,stat_col=col)
             if not a or a['quality']['grade']=='AVOID': continue
             ev_val=calc_ev(a['rec_prob'],best['price'])
             if ev_val is None or ev_val<min_ev: continue
