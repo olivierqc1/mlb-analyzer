@@ -34,9 +34,15 @@ def fb(endpoint, params, timeout=12):
 def find_player(name, league_id):
     key = f'player_{name}_{league_id}'
     if key in _cache: return _cache[key]
-    results = fb('players', {'search': name, 'league': league_id})
-    if not results:
-        results = fb('players', {'search': name.split()[-1], 'league': league_id})
+    # Try current season first, then previous, then without season
+    for params in [
+        {'search': name, 'league': league_id},
+        {'search': name.split()[-1], 'league': league_id},
+        {'search': name},  # no league filter
+        {'search': name.split()[-1]},
+    ]:
+        results = fb('players', params)
+        if results: break
     if not results:
         _cache[key] = None; return None
     # Best match
@@ -102,6 +108,8 @@ def get_player_fixtures(player_id, team_id, league_id, n=15):
     _cache[key] = games
     return games
 
+
+
 # ── Analyze (empirique comme MLB) ─────────────────────────────────────────────
 def analyze_player(games, line):
     from stats import analyze
@@ -127,9 +135,6 @@ def analyze_soccer():
         odds_ov  = d.get('odds_over')
         odds_un  = d.get('odds_under')
         bankroll = float(d.get('bankroll', 200))
-
-
-
 
         if not name:
             return jsonify({'status':'ERROR','message':'Joueur requis'}), 400
