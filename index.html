@@ -174,9 +174,10 @@ body{background:#0a0e13;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFo
   <!-- ── HISTORIQUE ── -->
   <div id="historyMode" style="display:none">
     <div id="histSummary"></div>
-
     <div class="hist-filters">
       <div class="hf active" onclick="filterHist('all',this)">Tous</div>
+
+
       <div class="hf" onclick="filterHist('pending',this)">⏳ Attente</div>
       <div class="hf" onclick="filterHist('won',this)">✅ Gagnés</div>
       <div class="hf" onclick="filterHist('lost',this)">❌ Perdus</div>
@@ -268,6 +269,7 @@ function setSport(sport, el){
   document.getElementById('summary').style.display = 'none';
   document.getElementById('scanStatus').textContent = '';
   document.getElementById('scanErr').innerHTML = '';
+  if(sport === 'soccer') renderSoccerForm();
 }
 function setStat(stat, el){
   document.querySelectorAll('.stat-tab').forEach(t => t.classList.remove('active'));
@@ -293,6 +295,11 @@ async function scan(){
   try {
     await fetch(API+'/api/health').catch(()=>{});
     const sp = currentStat ? `&stat_type=${currentStat}` : '';
+    if(currentSport === 'soccer'){
+      renderSoccerForm();
+      btn.disabled = false;
+      return;
+    }
     st.textContent = `📊 Analyse ${currentSport.toUpperCase()} en cours...`;
     const res  = await fetch(`${API}/api/daily-opportunities?sport=${currentSport}&min_edge=${minEV}${sp}`);
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -349,10 +356,10 @@ function buildCard(o, i){
   const gcls  = {A:'gb-a',B:'gb-b',C:'gb-c'}[q.grade]||'gb-c';
   const atag  = ['A','B'].includes(q.grade) ? `<span style="font-size:9px;background:#16a34a22;color:#4ade80;padding:1px 5px;border-radius:3px">💾 auto-sauvé</span>` : '';
   const gi    = o.game_info||{};
+
+
   const mu    = gi.home_team&&gi.away_team ? `${gi.away_team} @ ${gi.home_team}` : '';
   const tr    = ds.trend==='up'?'📈':ds.trend==='down'?'📉':'➡️';
-
-
 
   const bars = games.slice(0,10).reverse().map(g =>
     `<div class="hbar ${g.stat>la.bookmaker_line?'hbar-over':'hbar-under'}" style="height:${Math.max(5,(g.stat/maxV)*100)}%">
